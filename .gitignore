@@ -1,0 +1,26 @@
+# Binaries
+synkro
+synkro-*
+
+# Test databases
+*.db
+*.db-shm
+*.db-wal
+
+# Test cache
+coverage.out
+coverage.html
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
