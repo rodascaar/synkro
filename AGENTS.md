@@ -49,7 +49,7 @@ memory.db           # SQLite database (created by init)
 
 ## Key Technical Details
 
-- **Go version**: 1.25 (upgraded for MCP SDK)
+- **Go version**: 1.24 (go.mod: 1.24.2)
 - **CLI framework**: Cobra
 - **TUI framework**: Bubble Tea + Lipgloss
 - **Database**: SQLite3 with FTS5 virtual tables, WAL mode, foreign keys
@@ -140,7 +140,7 @@ make lint
 
 ## MCP Server
 
-**FULLY IMPLEMENTED** using `github.com/modelcontextprotocol/go-sdk` v1.5.0
+**FULLY IMPLEMENTED** using `github.com/modelcontextprotocol/go-sdk` v1.4.0
 
 Available tools:
 - `add_memory` - Add new memory
@@ -200,7 +200,7 @@ Controls:
 ## Important Gotchas
 
 1. **Database init**: Must run `./synkro init` before any other operations
-2. **Go version**: Requires Go 1.25+ for MCP SDK (automatically upgraded by go get)
+2. **Go version**: Requires Go 1.24+ (go.mod: 1.24.2)
 3. **FTS5 implemented**: Full-text search uses FTS5 virtual tables with BM25 scoring
 4. **Session tracking**: Dual storage (in-memory + SQLite) - persisted across restarts
 5. **Embedding cache**: SQLite-backed cache with SHA256 hash keys - persisted across restarts
