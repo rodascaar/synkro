@@ -11,10 +11,11 @@ permissions:
 
 jobs:
   build-and-release:
-    name: Build and Release
+    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ${{ matrix.os }}
 
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         include:
@@ -50,7 +51,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Get version
@@ -64,30 +65,27 @@ jobs:
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Install system dependencies
-        if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
-          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-            sudo apt-get update && sudo apt-get install -y gcc libsqlite3-dev
-          fi
+          sudo apt-get update
+          sudo apt-get install -y gcc libsqlite3-dev
 
-      - name: Install Windows dependencies
-        if: matrix.os == 'windows-latest'
+      - name: Install system dependencies (Windows)
+        if: runner.os == 'Windows'
         shell: bash
         run: |
-          choco install mingw -y
+          choco install mingw -y --no-progress
           echo "CC=gcc" >> "$GITHUB_ENV"
           echo "CGO_ENABLED=1" >> "$GITHUB_ENV"
 
       - name: Build binary
         shell: bash
+        env:
+          CGO_ENABLED: 1
         run: |
           echo "Building ${{ matrix.artifact_name }}..."
-          
-          if [ "${{ matrix.os }}" != "windows-latest" ]; then
-            export CGO_ENABLED=1
-          fi
-          
+
           go build -v \
             -tags sqlite_fts5 \
             -ldflags="-s -w \
@@ -96,37 +94,25 @@ jobs:
             -trimpath \
             -o synkro${{ matrix.goos == 'windows' && '.exe' || '' }} \
             ./cmd/synkro
-          
+
           ./synkro${{ matrix.goos == 'windows' && '.exe' || '' }} version
 
       - name: Create installer scripts
+        shell: bash
         run: |
-          echo "Creating installer for ${{ matrix.artifact_name }}..."
-          
           mkdir -p package
-          
-          # Copy binary
           cp synkro${{ matrix.goos == 'windows' && '.exe' || '' }} package/
-          
-          # Create platform-specific installer
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # Copy PowerShell installer
+
+          if [ "${{ matrix.goos }}" = "windows" ]; then
             cp install.ps1 package/
-            
-            # Create batch file for quick install
-            cat > package/install.bat <<'EOF'
-            @echo off
-            powershell -ExecutionPolicy Bypass -File -File install.ps1
-            EOF
+            printf '@echo off\r\npowershell -ExecutionPolicy Bypass -File install.ps1\r\n' > package/install.bat
           else
-            # Copy bash installer
             cp install.sh package/
             chmod +x package/install.sh
-            
-            # Create tarball
             tar czf package/synkro-${{ steps.version.outputs.VERSION }}-${{ matrix.artifact_name }}.tar.gz \
-              package/synkro${{ matrix.goos == 'windows' && '.exe' || '' }} \
-              package/install.${{ matrix.os == 'windows-latest' && 'ps1' || 'sh' }}
+              -C package \
+              synkro${{ matrix.goos == 'windows' && '.exe' || '' }} \
+              install.sh
           fi
 
       - name: Upload artifacts
@@ -145,44 +131,6 @@ jobs:
           draft: false
           prerelease: false
           name: ${{ steps.version.outputs.VERSION }}
-          body: |
-            ## 🚀 Synkro ${{ steps.version.outputs.VERSION }}
-            
-            ### 📦 What's New
-            - Professional installer system with one-command installation
-            - Multi-platform support (macOS/Linux/Windows x86_64/ARM64)
-            - Enhanced hybrid search (FTS5 + semantic embeddings)
-            - Visual relationship graph in TUI
-            - MCP server integration with official Go SDK
-            
-            ### 🔨 Bug Fixes
-            - Various performance improvements
-            - Enhanced installation process
-            
-            ### 📚 Documentation
-            - Updated installation guide
-            - Complete documentation set
-            
-            ### ⬇️  Downloads
-            - **macOS AMD64**: synkro-${{ steps.version.outputs.VERSION }}-darwin-amd64.tar.gz
-            - **macOS ARM64**: synkro-${{ steps.version.outputs.VERSION }}-darwin-arm64.tar.gz
-            - **Linux AMD64**: synkro-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz
-            - **Linux ARM64**: synkro-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz
-            - **Windows AMD64**: synkro-${{ steps.version.outputs.VERSION }}-windows-amd64.tar.gz
-            - **Windows ARM64**: synkro-${{ steps.version.outputs.VERSION }}-windows-arm64.tar.gz
-            
-            ### 🚀 Quick Start
-            ```bash
-            # One-command installation
-            curl -fsSL https://raw.githubusercontent.com/rodascaar/synkro/main/install.sh | bash
-            
-            # Or download platform-specific binary
-            wget https://github.com/rodascaar/synkro/releases/download/v${{ steps.version.outputs.VERSION }}/synkro-${{ matrix.artifact_name }}.tar.gz
-            ```
-            
-            --- 
-            
-            **Full Changelog**: https://github.com/rodascaar/synkro/compare/v${{ steps.version.outputs.VERSION }}...HEAD
 
   test:
     name: Test
@@ -194,10 +142,18 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version-file: 'go.mod'
           cache: true
 
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libsqlite3-dev
+          go mod download
+
       - name: Run tests
+        env:
+          CGO_ENABLED: 1
         run: |
           go test -v -race -coverprofile=coverage.out ./...
           go tool cover -html=coverage.out -o coverage.html
