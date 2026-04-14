@@ -65,11 +65,12 @@ type keyMap struct {
 	Quit   key.Binding
 	Graph  key.Binding
 	List   key.Binding
+	Filter key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
 	return []key.Binding{
-		k.Up, k.Down, k.Enter, k.Search, k.Add, k.Quit,
+		k.Up, k.Down, k.Enter, k.Search, k.Filter, k.Add, k.Quit,
 	}
 }
 
@@ -77,7 +78,7 @@ func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down},
 		{k.Enter, k.Escape},
-		{k.Search, k.Graph, k.List},
+		{k.Search, k.Filter, k.Graph, k.List},
 		{k.Add, k.Quit},
 	}
 }
@@ -118,6 +119,10 @@ var keys = keyMap{
 	List: key.NewBinding(
 		key.WithKeys("l"),
 		key.WithHelp("l", "list"),
+	),
+	Filter: key.NewBinding(
+		key.WithKeys("tab"),
+		key.WithHelp("tab", "filter"),
 	),
 }
 
@@ -185,8 +190,14 @@ func (m *model) filterMemories() []*memory.Memory {
 
 	filtered := make([]*memory.Memory, 0)
 	for _, mem := range m.memories {
-		if mem.Type == m.filterType {
-			filtered = append(filtered, mem)
+		if m.filterType == "archived" {
+			if mem.Status == "archived" {
+				filtered = append(filtered, mem)
+			}
+		} else {
+			if mem.Type == m.filterType {
+				filtered = append(filtered, mem)
+			}
 		}
 	}
 	return filtered
@@ -296,6 +307,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.showGraph {
 				m.showGraph = false
 			}
+			return m, nil
+
+		case key.Matches(msg, keys.Filter):
+			m.sidebarSel = (m.sidebarSel + 1) % 5
+			filterTypes := []string{"", "decision", "task", "note", "archived"}
+			m.filterType = filterTypes[m.sidebarSel]
+			m.selected = 0
 			return m, nil
 		}
 

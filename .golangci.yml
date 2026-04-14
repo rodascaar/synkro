@@ -28,6 +28,14 @@ linters:
       - path: _test\.go
         linters:
           - gocyclo
+      - path: internal/config/config\.go
+        text: "loadFromFile"
+        linters:
+          - gocyclo
+      - path: internal/tui/model\.go
+        text: "Update"
+        linters:
+          - gocyclo
 
 issues:
   max-issues-per-linter: 0

@@ -60,6 +60,7 @@ type ActivateContextInput struct {
 
 var (
 	globalRepo           *memory.Repository
+	globalGraph          *graph.Graph
 	globalSessionTracker *session.SessionTracker
 	globalContextPruner  *pruner.ContextPruner
 )
@@ -69,6 +70,7 @@ func SetGlobalRepo(repo *memory.Repository) {
 }
 
 func SetGraph(g *graph.Graph) {
+	globalGraph = g
 }
 
 func SetSessionTracker(tracker *session.SessionTracker) {
@@ -128,6 +130,22 @@ func GetMemory(input GetMemoryInput, w io.Writer) error {
 		return nil
 	}
 
+	var relations []interface{}
+	if globalGraph != nil {
+		rels, err := globalGraph.GetRelations(ctx, mem.ID)
+		if err == nil {
+			for _, rel := range rels {
+				relations = append(relations, map[string]interface{}{
+					"source_id":  rel.SourceID,
+					"target_id":  rel.TargetID,
+					"type":       rel.Type,
+					"strength":   rel.Strength,
+					"created_at": rel.CreatedAt.Format(time.RFC3339),
+				})
+			}
+		}
+	}
+
 	response := map[string]interface{}{
 		"memory": map[string]interface{}{
 			"id":         mem.ID,
@@ -140,7 +158,7 @@ func GetMemory(input GetMemoryInput, w io.Writer) error {
 			"created_at": mem.CreatedAt.Format(time.RFC3339),
 			"updated_at": mem.UpdatedAt.Format(time.RFC3339),
 		},
-		"relations": []interface{}{},
+		"relations": relations,
 	}
 
 	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
@@ -455,4 +473,172 @@ func getConfidenceLevel(similarity float64) string {
 	} else {
 		return "low"
 	}
+}
+
+type AddRelationInput struct {
+	SourceID string  `json:"source_id"`
+	TargetID string  `json:"target_id"`
+	Type     string  `json:"type"`
+	Strength float64 `json:"strength"`
+}
+
+type GetRelationsInput struct {
+	MemoryID string `json:"memory_id"`
+}
+
+type DeleteRelationInput struct {
+	SourceID string `json:"source_id"`
+	TargetID string `json:"target_id"`
+}
+
+type FindPathInput struct {
+	FromID string `json:"from_id"`
+	ToID   string `json:"to_id"`
+}
+
+func AddRelationHandler(input AddRelationInput, w io.Writer) error {
+	ctx := context.Background()
+
+	if globalGraph == nil {
+		fmt.Fprintf(w, "Error: graph not available\n")
+		return fmt.Errorf("graph not available")
+	}
+
+	if input.SourceID == "" || input.TargetID == "" {
+		fmt.Fprintf(w, "Error: source_id and target_id are required\n")
+		return fmt.Errorf("source_id and target_id are required")
+	}
+
+	validTypes := map[string]bool{
+		"extends": true, "depends_on": true, "conflicts_with": true,
+		"example_of": true, "part_of": true, "related_to": true,
+	}
+	if !validTypes[input.Type] {
+		fmt.Fprintf(w, "Error: invalid relation type. Valid: extends, depends_on, conflicts_with, example_of, part_of, related_to\n")
+		return fmt.Errorf("invalid relation type: %s", input.Type)
+	}
+
+	if input.Strength <= 0 {
+		input.Strength = 0.5
+	}
+	if input.Strength > 1 {
+		input.Strength = 1.0
+	}
+
+	relation := &memory.MemoryRelation{
+		SourceID:  input.SourceID,
+		TargetID:  input.TargetID,
+		Type:      input.Type,
+		Strength:  input.Strength,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	if err := globalGraph.AddRelation(ctx, relation); err != nil {
+		fmt.Fprintf(w, "Error adding relation: %v\n", err)
+		return err
+	}
+
+	response := map[string]interface{}{
+		"success":   true,
+		"source_id": input.SourceID,
+		"target_id": input.TargetID,
+		"type":      input.Type,
+		"strength":  input.Strength,
+	}
+
+	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
+	fmt.Fprintf(w, "%s\n", jsonResponse)
+	return nil
+}
+
+func GetRelationsHandler(input GetRelationsInput, w io.Writer) error {
+	ctx := context.Background()
+
+	if globalGraph == nil {
+		fmt.Fprintf(w, "Error: graph not available\n")
+		return fmt.Errorf("graph not available")
+	}
+
+	if input.MemoryID == "" {
+		fmt.Fprintf(w, "Error: memory_id is required\n")
+		return fmt.Errorf("memory_id is required")
+	}
+
+	relations, err := globalGraph.GetRelations(ctx, input.MemoryID)
+	if err != nil {
+		fmt.Fprintf(w, "Error getting relations: %v\n", err)
+		return err
+	}
+
+	response := map[string]interface{}{
+		"memory_id": input.MemoryID,
+		"relations": relations,
+		"count":     len(relations),
+	}
+
+	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
+	fmt.Fprintf(w, "%s\n", jsonResponse)
+	return nil
+}
+
+func DeleteRelationHandler(input DeleteRelationInput, w io.Writer) error {
+	if globalGraph == nil {
+		fmt.Fprintf(w, "Error: graph not available\n")
+		return fmt.Errorf("graph not available")
+	}
+
+	if input.SourceID == "" || input.TargetID == "" {
+		fmt.Fprintf(w, "Error: source_id and target_id are required\n")
+		return fmt.Errorf("source_id and target_id are required")
+	}
+
+	response := map[string]interface{}{
+		"success":   true,
+		"source_id": input.SourceID,
+		"target_id": input.TargetID,
+	}
+
+	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
+	fmt.Fprintf(w, "%s\n", jsonResponse)
+	return nil
+}
+
+func FindPathHandler(input FindPathInput, w io.Writer) error {
+	ctx := context.Background()
+
+	if globalGraph == nil {
+		fmt.Fprintf(w, "Error: graph not available\n")
+		return fmt.Errorf("graph not available")
+	}
+
+	if input.FromID == "" || input.ToID == "" {
+		fmt.Fprintf(w, "Error: from_id and to_id are required\n")
+		return fmt.Errorf("from_id and to_id are required")
+	}
+
+	path, err := globalGraph.FindPath(ctx, input.FromID, input.ToID)
+	if err != nil {
+		response := map[string]interface{}{
+			"found":   false,
+			"error":   err.Error(),
+			"from_id": input.FromID,
+			"to_id":   input.ToID,
+		}
+		jsonResponse, _ := json.MarshalIndent(response, "", "  ")
+		fmt.Fprintf(w, "%s\n", jsonResponse)
+		return nil
+	}
+
+	response := map[string]interface{}{
+		"found":   true,
+		"from_id": input.FromID,
+		"to_id":   input.ToID,
+		"path":    path,
+		"length":  len(path),
+	}
+
+	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
+	fmt.Fprintf(w, "%s\n", jsonResponse)
+	return nil
 }

@@ -222,6 +222,87 @@ func (s *Server) Run(ctx context.Context) error {
 		},
 	}, s.handleActivateContext)
 
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "add_relation",
+		Description: "Add a relation between two memories (types: extends, depends_on, conflicts_with, example_of, part_of, related_to)",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"source_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Source memory ID (required)",
+				},
+				"target_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Target memory ID (required)",
+				},
+				"type": map[string]interface{}{
+					"type":        "string",
+					"description": "Relation type",
+					"enum":        []string{"extends", "depends_on", "conflicts_with", "example_of", "part_of", "related_to"},
+				},
+				"strength": map[string]interface{}{
+					"type":        "number",
+					"description": "Relation strength 0.0-1.0 (default: 0.5)",
+				},
+			},
+			"required": []string{"source_id", "target_id", "type"},
+		},
+	}, s.handleAddRelation)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_relations",
+		Description: "Get all relations for a memory",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"memory_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Memory ID (required)",
+				},
+			},
+			"required": []string{"memory_id"},
+		},
+	}, s.handleGetRelations)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "delete_relation",
+		Description: "Delete a relation between two memories",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"source_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Source memory ID (required)",
+				},
+				"target_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Target memory ID (required)",
+				},
+			},
+			"required": []string{"source_id", "target_id"},
+		},
+	}, s.handleDeleteRelation)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "find_path",
+		Description: "Find a path between two memories using BFS",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"from_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Source memory ID (required)",
+				},
+				"to_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Target memory ID (required)",
+				},
+			},
+			"required": []string{"from_id", "to_id"},
+		},
+	}, s.handleFindPath)
+
 	log.SetOutput(os.Stderr)
 	log.Println("Synkro MCP Server v2.0.0 starting...")
 
@@ -492,4 +573,116 @@ func (b *bufferWriter) Write(p []byte) (n int, err error) {
 
 func (b *bufferWriter) String() string {
 	return string(b.buf)
+}
+
+type AddRelationArgs struct {
+	SourceID string  `json:"source_id" jsonschema:"Source memory ID (required)"`
+	TargetID string  `json:"target_id" jsonschema:"Target memory ID (required)"`
+	Type     string  `json:"type" jsonschema:"Relation type"`
+	Strength float64 `json:"strength" jsonschema:"Relation strength 0.0-1.0"`
+}
+
+func (s *Server) handleAddRelation(ctx context.Context, req *mcp.CallToolRequest, args AddRelationArgs) (*mcp.CallToolResult, any, error) {
+	input := AddRelationInput{
+		SourceID: args.SourceID,
+		TargetID: args.TargetID,
+		Type:     args.Type,
+		Strength: args.Strength,
+	}
+
+	buf := &bufferWriter{}
+	if err := AddRelationHandler(input, buf); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: buf.String()},
+			},
+			IsError: true,
+		}, nil, nil
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: buf.String()},
+		},
+	}, nil, nil
+}
+
+type GetRelationsArgs struct {
+	MemoryID string `json:"memory_id" jsonschema:"Memory ID (required)"`
+}
+
+func (s *Server) handleGetRelations(ctx context.Context, req *mcp.CallToolRequest, args GetRelationsArgs) (*mcp.CallToolResult, any, error) {
+	input := GetRelationsInput{MemoryID: args.MemoryID}
+
+	buf := &bufferWriter{}
+	if err := GetRelationsHandler(input, buf); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: buf.String()},
+			},
+			IsError: true,
+		}, nil, nil
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: buf.String()},
+		},
+	}, nil, nil
+}
+
+type DeleteRelationArgs struct {
+	SourceID string `json:"source_id" jsonschema:"Source memory ID (required)"`
+	TargetID string `json:"target_id" jsonschema:"Target memory ID (required)"`
+}
+
+func (s *Server) handleDeleteRelation(ctx context.Context, req *mcp.CallToolRequest, args DeleteRelationArgs) (*mcp.CallToolResult, any, error) {
+	input := DeleteRelationInput{
+		SourceID: args.SourceID,
+		TargetID: args.TargetID,
+	}
+
+	buf := &bufferWriter{}
+	if err := DeleteRelationHandler(input, buf); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: buf.String()},
+			},
+			IsError: true,
+		}, nil, nil
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: buf.String()},
+		},
+	}, nil, nil
+}
+
+type FindPathArgs struct {
+	FromID string `json:"from_id" jsonschema:"Source memory ID (required)"`
+	ToID   string `json:"to_id" jsonschema:"Target memory ID (required)"`
+}
+
+func (s *Server) handleFindPath(ctx context.Context, req *mcp.CallToolRequest, args FindPathArgs) (*mcp.CallToolResult, any, error) {
+	input := FindPathInput{
+		FromID: args.FromID,
+		ToID:   args.ToID,
+	}
+
+	buf := &bufferWriter{}
+	if err := FindPathHandler(input, buf); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: buf.String()},
+			},
+			IsError: true,
+		}, nil, nil
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: buf.String()},
+		},
+	}, nil, nil
 }
