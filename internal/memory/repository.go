@@ -43,7 +43,9 @@ func (r *Repository) Create(ctx context.Context, mem *Memory) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO memories (id, created_at, updated_at, type, title, content, source, status, tags)
@@ -62,7 +64,7 @@ func (r *Repository) Create(ctx context.Context, mem *Memory) error {
 	if r.embeddingGenerator != nil {
 		embedding, err := r.embeddingGenerator.Generate(ctx, mem.Title+" "+mem.Content)
 		if err == nil {
-			r.saveEmbedding(ctx, mem.ID, embedding)
+			_ = r.saveEmbedding(ctx, mem.ID, embedding)
 		}
 	}
 

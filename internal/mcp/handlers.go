@@ -363,8 +363,8 @@ func ActivateContext(input ActivateContextInput, w io.Writer) error {
 		DuplicateDetected:  duplicateDetected,
 		MaxTokens:          input.MaxTokens,
 		TotalTokens:        0,
-		PrimaryResults:     convertToContextItems(prioritized, false, input.Query),
-		LowPriorityResults: convertToContextItems(lowPriority, true, input.Query),
+		PrimaryResults:     convertToContextItems(prioritized, false),
+		LowPriorityResults: convertToContextItems(lowPriority, true),
 	}
 
 	if globalSessionTracker != nil {
@@ -415,7 +415,7 @@ type MemoryResult struct {
 	UpdatedAt string   `json:"updated_at"`
 }
 
-func convertToContextItems(results []*memory.HybridSearchResult, isReminder bool, query string) []*ContextResultItem {
+func convertToContextItems(results []*memory.HybridSearchResult, isReminder bool) []*ContextResultItem {
 	items := make([]*ContextResultItem, 0, len(results))
 
 	for _, result := range results {

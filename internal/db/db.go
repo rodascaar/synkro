@@ -2,16 +2,12 @@ package db
 
 import (
 	"database/sql"
-	"embed"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	_ "github.com/mattn/go-sqlite3"
 )
-
-//go:embed extensions/*
-var extensionAssets embed.FS
 
 type Database struct {
 	db *sql.DB

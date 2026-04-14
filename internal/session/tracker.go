@@ -79,7 +79,7 @@ func (st *SessionTracker) GetOrCreate(ctx context.Context, sessionID string) *Se
 		st.sessions[sessionID] = session
 
 		if st.repo != nil {
-			st.repo.Save(context.Background(), session)
+			_ = st.repo.Save(context.Background(), session)
 		}
 	}
 
@@ -98,7 +98,7 @@ func (st *SessionTracker) MarkAsDelivered(ctx context.Context, sessionID, memory
 	session.UpdatedAt = time.Now()
 
 	if st.repo != nil {
-		st.repo.MarkDelivered(ctx, sessionID, memoryID)
+		_ = st.repo.MarkDelivered(ctx, sessionID, memoryID)
 	}
 }
 
@@ -132,7 +132,7 @@ func (st *SessionTracker) UpdateLastQuery(ctx context.Context, sessionID, query 
 	session.UpdatedAt = time.Now()
 
 	if st.repo != nil {
-		st.repo.UpdateLastQuery(ctx, sessionID, query)
+		_ = st.repo.UpdateLastQuery(ctx, sessionID, query)
 	}
 }
 

@@ -172,7 +172,7 @@ var initCmd = &cobra.Command{
 		fmt.Println("")
 		fmt.Print("¿Eres nuevo en Synkro? ¿Quieres ver un tutorial? (y/n): ")
 		var response string
-		fmt.Scanln(&response)
+		_, _ = fmt.Scanln(&response)
 
 		if strings.ToLower(strings.TrimSpace(response)) == "y" || strings.ToLower(strings.TrimSpace(response)) == "yes" {
 			fmt.Println("")
@@ -316,5 +316,5 @@ func checkForUpdatesAsync() {
 
 	// Actualizar último check
 	cfg.LastUpdateCheck = now
-	config.Save(cfg)
+	_ = config.Save(cfg)
 }

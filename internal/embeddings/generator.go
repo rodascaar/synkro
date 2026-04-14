@@ -163,7 +163,7 @@ func (g *TFIDFEmbeddingGenerator) generateEmbedding(tokens []string) []float32 {
 			if dim < 0 {
 				dim = -dim
 			}
-			embedding[dim] += score*float32((hash>>uint32(j%32))&1)*2 - 1
+			embedding[dim] += score*float32(uint32(hash>>uint32(j%32))&1)*2 - 1
 		}
 	}
 

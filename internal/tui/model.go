@@ -156,7 +156,7 @@ func (m *model) Init() tea.Cmd {
 	m.searchBox.CharLimit = 100
 	m.searchBox.Width = 30
 
-	m.help = help.NewModel()
+	m.help = help.New()
 	m.ctx = context.Background()
 	return m.loadMemories()
 }
