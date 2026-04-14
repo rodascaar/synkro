@@ -56,8 +56,10 @@ var addCmd = &cobra.Command{
 		repo := memory.NewRepository(d.DB())
 
 		embedMgr, err := embeddings.NewEmbeddingManager(embeddings.Config{
-			ModelType: embeddings.ModelTypeTFIDF,
-			DB:        d.DB(),
+			ModelType:      embeddings.ModelType(cfg.ModelType),
+			DB:             d.DB(),
+			ModelPath:      "models",
+			PreferredModel: "all-MiniLM-L6-v2",
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating embedding manager: %v\n", err)
@@ -374,9 +376,20 @@ func init() {
 	}
 
 	rootCmd.AddCommand(addCmd)
+	addCmd.Flags().String("type", "note", "Memory type (note, decision, task, context)")
+	addCmd.Flags().String("title", "", "Memory title (required)")
+	addCmd.Flags().String("content", "", "Memory content")
+	addCmd.Flags().String("source", "", "Memory source")
+	addCmd.Flags().StringSlice("tags", nil, "Comma-separated tags")
+
 	rootCmd.AddCommand(listCmd)
+	listCmd.Flags().String("type", "", "Filter by type")
+	listCmd.Flags().String("status", "", "Filter by status")
+	listCmd.Flags().Int("limit", 20, "Maximum number of results")
+
 	rootCmd.AddCommand(searchCmd)
 	rootCmd.AddCommand(initCmd)
+	initCmd.Flags().Bool("with-models", false, "Enable embedding models")
 	rootCmd.AddCommand(tuiCmd)
 	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(versionCmd)
@@ -430,8 +443,10 @@ var mcpCmd = &cobra.Command{
 		repo := memory.NewRepository(d.DB())
 
 		embedMgr, err := embeddings.NewEmbeddingManager(embeddings.Config{
-			ModelType: embeddings.ModelTypeTFIDF,
-			DB:        d.DB(),
+			ModelType:      embeddings.ModelType(cfg.ModelType),
+			DB:             d.DB(),
+			ModelPath:      "models",
+			PreferredModel: "all-MiniLM-L6-v2",
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating embedding manager: %v\n", err)

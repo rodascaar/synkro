@@ -120,7 +120,7 @@ download_binary() {
     
     # Try to download from releases
     if curl -fsSL "$RELEASES_URL" | grep -q "browser_download_url"; then
-        DOWNLOAD_URL=$(curl -fsSL "$RELEASES_URL" | grep "browser_download_url" | grep "darwin" | grep "amd64" | head -1 | sed 's/.*"https:/https/' | sed 's/".*//')
+        DOWNLOAD_URL=$(curl -fsSL "$RELEASES_URL" | grep "browser_download_url" | grep "$PLATFORM" | grep "$BINARY_ARCH" | head -1 | sed 's/.*"https:/https/' | sed 's/".*//')
         
         echo "Downloading from: $DOWNLOAD_URL"
         
