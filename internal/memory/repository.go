@@ -430,7 +430,7 @@ func (r *Repository) searchByVector(ctx context.Context, queryEmbedding []float3
 	return results, nil
 }
 
-func (r *Repository) mergeSearchResults(ctx context.Context, fts5Results map[string]*FTS5Result, vectorResults map[string]*VectorResult, queryEmbedding []float32, k int) []*HybridSearchResult {
+func (r *Repository) mergeSearchResults(_ context.Context, fts5Results map[string]*FTS5Result, vectorResults map[string]*VectorResult, _ []float32, k int) []*HybridSearchResult {
 	seen := make(map[string]bool)
 	merged := make([]*HybridSearchResult, 0)
 
@@ -524,20 +524,6 @@ func calculateBM25Score(rank float64) float64 {
 		return 1.0
 	}
 	return 1.0 / rank
-}
-
-func (r *Repository) getEmbedding(ctx context.Context, memoryID string) ([]float32, error) {
-	var embeddingBytes []byte
-	err := r.db.QueryRowContext(ctx, "SELECT embedding FROM memory_embeddings WHERE memory_id = ?", memoryID).Scan(&embeddingBytes)
-	if err != nil {
-		return nil, err
-	}
-
-	if embeddingBytes == nil {
-		return nil, nil
-	}
-
-	return embeddings.DeserializeEmbedding(embeddingBytes), nil
 }
 
 func (r *Repository) Update(ctx context.Context, id string, update *MemoryUpdate) error {

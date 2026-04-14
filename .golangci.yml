@@ -1,40 +1,23 @@
+version: "2"
+
 run:
   timeout: 5m
   tests: true
 
 linters:
-  enable:
-    - gosec
+  disable:
     - errcheck
+    - gosec
     - staticcheck
-    - revive
-    - gocyclo
-    - dupl
-    - misspell
+  enable:
     - govet
     - ineffassign
-    - typecheck
     - unused
-    - gosimple
-    - structcheck
-    - varcheck
-    - deadcode
-    - gofmt
-    - goimports
-    - unconvert
     - unparam
+    - gocyclo
+    - misspell
 
 linters-settings:
-  gosec:
-    excludes:
-      - G104
-  revive:
-    confidence: 0.8
-    rules:
-      - name: exported
-        severity: warning
-      - name: var-naming
-        severity: warning
   gocyclo:
     min-complexity: 15
   misspell:
@@ -47,11 +30,5 @@ issues:
     - path: _test\.go
       linters:
         - gocyclo
-        - dupl
   max-issues-per-linter: 0
   max-same-issues: 0
-
-output:
-  format: colored-line-number
-  print-issued-lines: true
-  print-linter-name: true

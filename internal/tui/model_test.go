@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func setupTestTUI(t *testing.T) (*db.Database, *memory.Repository, func()) {
+func setupTestTUI(t *testing.T) (*memory.Repository, func()) {
 	d, err := db.New(":memory:")
 	require.NoError(t, err)
 
@@ -30,11 +30,11 @@ func setupTestTUI(t *testing.T) (*db.Database, *memory.Repository, func()) {
 	}
 
 	cleanup := func() { d.Close() }
-	return d, repo, cleanup
+	return repo, cleanup
 }
 
 func TestModel_Init(t *testing.T) {
-	_, repo, cleanup := setupTestTUI(t)
+	repo, cleanup := setupTestTUI(t)
 	defer cleanup()
 
 	model := tui.InitialModel(repo, nil)
@@ -44,7 +44,7 @@ func TestModel_Init(t *testing.T) {
 }
 
 func TestModel_Update_Keys(t *testing.T) {
-	_, repo, cleanup := setupTestTUI(t)
+	repo, cleanup := setupTestTUI(t)
 	defer cleanup()
 
 	model := tui.InitialModel(repo, nil)
@@ -68,7 +68,7 @@ func TestModel_Update_Keys(t *testing.T) {
 }
 
 func TestAddModel_Update(t *testing.T) {
-	_, repo, cleanup := setupTestTUI(t)
+	repo, cleanup := setupTestTUI(t)
 	defer cleanup()
 
 	parent := tui.InitialModel(repo, nil)

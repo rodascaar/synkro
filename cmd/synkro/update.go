@@ -79,14 +79,14 @@ var selfUpdateCmd = &cobra.Command{
 	Short: "Update Synkro to latest version",
 	Long:  "Download and install the latest version of Synkro",
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := selfUpdateRun(cmd, args); err != nil {
+		if err := selfUpdateRun(args); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	},
 }
 
-func selfUpdateRun(cmd *cobra.Command, args []string) error {
+func selfUpdateRun(_ []string) error {
 	fmt.Println("🔄 Checking for updates...")
 
 	info, err := getUpdateInfo()
@@ -119,7 +119,7 @@ func selfUpdateRun(cmd *cobra.Command, args []string) error {
 			fmt.Println("Update cancelled")
 			return nil
 		}
-		return buildFromSource(info.LatestVersion)
+		return buildFromSource()
 	}
 
 	fmt.Printf("📥 Downloading update: %s\n", info.LatestVersion)
@@ -202,7 +202,7 @@ func downloadUpdate(downloadURL string) (string, error) {
 }
 
 func installUpdate(tempFile string, platformInfo platformInfoStruct) error {
-	newBinary := tempFile + "-new"
+	var newBinary string
 	extractedDir := filepath.Join(os.TempDir(), "synkro-extract")
 
 	switch platformInfo.os {
@@ -237,7 +237,7 @@ func installUpdate(tempFile string, platformInfo platformInfoStruct) error {
 	return nil
 }
 
-func buildFromSource(version string) error {
+func buildFromSource() error {
 	fmt.Println("🔨 Building from source...")
 
 	buildDir := "build"

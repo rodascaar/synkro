@@ -60,7 +60,6 @@ type ActivateContextInput struct {
 
 var (
 	globalRepo           *memory.Repository
-	globalGraph          *graph.Graph
 	globalSessionTracker *session.SessionTracker
 	globalContextPruner  *pruner.ContextPruner
 )
@@ -70,7 +69,6 @@ func SetGlobalRepo(repo *memory.Repository) {
 }
 
 func SetGraph(g *graph.Graph) {
-	globalGraph = g
 }
 
 func SetSessionTracker(tracker *session.SessionTracker) {

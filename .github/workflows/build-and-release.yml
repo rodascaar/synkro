@@ -50,18 +50,19 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
           cache: true
 
       - name: Get version
         id: version
+        shell: bash
         run: |
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             VERSION="dev-$(git rev-parse --short HEAD)"
           else
             VERSION="${{ github.ref }}"
           fi
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Build binary
         run: |

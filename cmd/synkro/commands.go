@@ -385,6 +385,10 @@ func init() {
 	rootCmd.AddCommand(examplesCmd)
 	rootCmd.AddCommand(healthCmd)
 	rootCmd.AddCommand(modelCmd)
+	modelCmd.AddCommand(modelListCmd)
+	modelCmd.AddCommand(modelDownloadCmd)
+	modelCmd.AddCommand(modelDeleteCmd)
+	modelCmd.AddCommand(modelInfoCmd)
 }
 
 var tuiCmd = &cobra.Command{
