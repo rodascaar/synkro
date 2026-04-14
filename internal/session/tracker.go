@@ -90,7 +90,22 @@ func (st *SessionTracker) MarkAsDelivered(ctx context.Context, sessionID, memory
 	st.mu.Lock()
 	defer st.mu.Unlock()
 
-	session := st.GetOrCreate(ctx, sessionID)
+	session, exists := st.sessions[sessionID]
+	if !exists {
+		now := time.Now()
+		session = &Session{
+			ID:                sessionID,
+			CreatedAt:         now,
+			UpdatedAt:         now,
+			DeliveredMemories: make(map[string]*DeliveredMemory),
+		}
+		st.sessions[sessionID] = session
+
+		if st.repo != nil {
+			_ = st.repo.Save(context.Background(), session)
+		}
+	}
+
 	session.DeliveredMemories[memoryID] = &DeliveredMemory{
 		MemoryID:    memoryID,
 		DeliveredAt: time.Now(),
@@ -126,7 +141,22 @@ func (st *SessionTracker) UpdateLastQuery(ctx context.Context, sessionID, query 
 	st.mu.Lock()
 	defer st.mu.Unlock()
 
-	session := st.GetOrCreate(ctx, sessionID)
+	session, exists := st.sessions[sessionID]
+	if !exists {
+		now := time.Now()
+		session = &Session{
+			ID:                sessionID,
+			CreatedAt:         now,
+			UpdatedAt:         now,
+			DeliveredMemories: make(map[string]*DeliveredMemory),
+		}
+		st.sessions[sessionID] = session
+
+		if st.repo != nil {
+			_ = st.repo.Save(context.Background(), session)
+		}
+	}
+
 	session.LastQuery = query
 	session.LastQueryAt = time.Now()
 	session.UpdatedAt = time.Now()

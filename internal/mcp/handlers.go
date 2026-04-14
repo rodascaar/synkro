@@ -583,6 +583,8 @@ func GetRelationsHandler(input GetRelationsInput, w io.Writer) error {
 }
 
 func DeleteRelationHandler(input DeleteRelationInput, w io.Writer) error {
+	ctx := context.Background()
+
 	if globalGraph == nil {
 		fmt.Fprintf(w, "Error: graph not available\n")
 		return fmt.Errorf("graph not available")
@@ -591,6 +593,11 @@ func DeleteRelationHandler(input DeleteRelationInput, w io.Writer) error {
 	if input.SourceID == "" || input.TargetID == "" {
 		fmt.Fprintf(w, "Error: source_id and target_id are required\n")
 		return fmt.Errorf("source_id and target_id are required")
+	}
+
+	if err := globalGraph.DeleteRelation(ctx, input.SourceID, input.TargetID); err != nil {
+		fmt.Fprintf(w, "Error deleting relation: %v\n", err)
+		return err
 	}
 
 	response := map[string]interface{}{

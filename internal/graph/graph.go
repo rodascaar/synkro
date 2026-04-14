@@ -127,3 +127,24 @@ func (g *Graph) GetStats(ctx context.Context) (map[string]int, error) {
 
 	return stats, nil
 }
+
+func (g *Graph) DeleteRelation(ctx context.Context, sourceID, targetID string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.graphRepo != nil {
+		if err := g.graphRepo.Delete(ctx, sourceID, targetID); err != nil {
+			return err
+		}
+	}
+
+	filtered := make([]*memory.MemoryRelation, 0, len(g.relation))
+	for _, rel := range g.relation {
+		if !(rel.SourceID == sourceID && rel.TargetID == targetID) {
+			filtered = append(filtered, rel)
+		}
+	}
+	g.relation = filtered
+
+	return nil
+}
