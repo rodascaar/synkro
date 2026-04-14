@@ -25,8 +25,7 @@ var rootCmd = &cobra.Command{
 	Short: "Synkro memory management",
 	Long:  "Synkro - Motor de Contexto Inteligente para LLMs",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// Verificar actualizaciones al inicio (asíncrono)
-		if cfg.CheckUpdateOnStart && cmd.Name() != "update" {
+		if cfg.CheckUpdateOnStart && cmd.Name() != "update" && cmd.Name() != "self-update" && cmd.Name() != "mcp" {
 			go checkForUpdatesAsync()
 		}
 	},
@@ -186,9 +185,180 @@ var initCmd = &cobra.Command{
 
 		if withModels {
 			fmt.Println("Embedding models enabled (MiniLM)")
-			fmt.Println("Note: For full embeddings functionality, download all-minilm-l6-v2.ggml from:")
-			fmt.Println("  https://huggingface.co/ggerganov/all-minilm-l6-v2-ggml")
-			fmt.Println("Place it in: internal/embeddings/models/")
+			fmt.Println("Note: For full embeddings functionality, download models using:")
+			fmt.Println("  synkro model download all-MiniLM-L6-v2")
+			fmt.Println("  synkro model download paraphrase-multilingual-MiniLM-L12-v2")
+		}
+	},
+}
+
+var modelCmd = &cobra.Command{
+	Use:   "model",
+	Short: "Manage embedding models",
+}
+
+var modelListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List available models",
+	Run: func(cmd *cobra.Command, args []string) {
+		modelMgr := embeddings.NewModelManager(&embeddings.ManagerConfig{
+			DownloadDir:  "models",
+			CacheDir:     "cache",
+			MaxModels:    5,
+			AutoDownload: false,
+		})
+
+		models := modelMgr.ListModels()
+		fmt.Println("Available Models:")
+		fmt.Println()
+
+		for _, model := range models {
+			status := "📥"
+			if model.Downloaded {
+				status = "✓"
+			}
+
+			fmt.Printf("%s %s\n", status, model.Name)
+			fmt.Printf("  Dimension: %d\n", model.Dimension)
+			fmt.Printf("  Language: %s\n", model.Language)
+			fmt.Printf("  License: %s\n", model.License)
+
+			if model.Params != "" {
+				fmt.Printf("  Parameters: %s\n", model.Params)
+			}
+
+			if model.MaxSeqLen > 0 {
+				fmt.Printf("  Max Sequence Length: %d\n", model.MaxSeqLen)
+			}
+
+			if len(model.Benchmarks) > 0 {
+				fmt.Printf("  Benchmarks:\n")
+				for name, score := range model.Benchmarks {
+					fmt.Printf("    %s: %.2f\n", name, score)
+				}
+			}
+
+			if model.Description != "" {
+				fmt.Printf("  Description: %s\n", model.Description)
+			}
+
+			if model.Downloaded {
+				sizeMB := float64(model.FileSize) / (1024 * 1024)
+				fmt.Printf("  Downloaded: %.2f MB\n", sizeMB)
+			}
+
+			fmt.Println()
+		}
+	},
+}
+
+var modelDownloadCmd = &cobra.Command{
+	Use:   "download",
+	Short: "Download a model",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		modelName := args[0]
+
+		modelMgr := embeddings.NewModelManager(&embeddings.ManagerConfig{
+			DownloadDir:  "models",
+			CacheDir:     "cache",
+			MaxModels:    5,
+			AutoDownload: false,
+		})
+
+		fmt.Printf("Downloading model: %s\n", modelName)
+
+		progressChan := make(chan float64)
+		go func() {
+			if err := modelMgr.DownloadModel(context.Background(), modelName, func(progress float64) {
+				progressChan <- progress
+			}); err != nil {
+				fmt.Fprintf(os.Stderr, "Error downloading model: %v\n", err)
+				os.Exit(1)
+			}
+			close(progressChan)
+		}()
+
+		for progress := range progressChan {
+			percent := int(progress * 100)
+			fmt.Printf("\rProgress: %d%% [%-50s]", percent, strings.Repeat("=", percent/2)+strings.Repeat(" ", 50-percent/2))
+		}
+		fmt.Println("\n✓ Model downloaded successfully")
+	},
+}
+
+var modelDeleteCmd = &cobra.Command{
+	Use:   "delete",
+	Short: "Delete a model",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		modelName := args[0]
+
+		modelMgr := embeddings.NewModelManager(&embeddings.ManagerConfig{
+			DownloadDir:  "models",
+			CacheDir:     "cache",
+			MaxModels:    5,
+			AutoDownload: false,
+		})
+
+		if err := modelMgr.DeleteModel(modelName); err != nil {
+			fmt.Fprintf(os.Stderr, "Error deleting model: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("✓ Model %s deleted successfully\n", modelName)
+	},
+}
+
+var modelInfoCmd = &cobra.Command{
+	Use:   "info",
+	Short: "Show model information",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		modelName := args[0]
+
+		modelMgr := embeddings.NewModelManager(&embeddings.ManagerConfig{
+			DownloadDir:  "models",
+			CacheDir:     "cache",
+			MaxModels:    5,
+			AutoDownload: false,
+		})
+
+		model, err := modelMgr.GetModel(modelName)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Model: %s\n", model.Name)
+		fmt.Printf("  Dimension: %d\n", model.Dimension)
+		fmt.Printf("  Language: %s\n", model.Language)
+		fmt.Printf("  License: %s\n", model.License)
+		fmt.Printf("  Downloaded: %v\n", model.Downloaded)
+
+		if model.Params != "" {
+			fmt.Printf("  Parameters: %s\n", model.Params)
+		}
+
+		if model.MaxSeqLen > 0 {
+			fmt.Printf("  Max Sequence Length: %d\n", model.MaxSeqLen)
+		}
+
+		if len(model.Benchmarks) > 0 {
+			fmt.Printf("  Benchmarks:\n")
+			for name, score := range model.Benchmarks {
+				fmt.Printf("    %s: %.2f\n", name, score)
+			}
+		}
+
+		if model.Description != "" {
+			fmt.Printf("  Description: %s\n", model.Description)
+		}
+
+		if model.Downloaded {
+			sizeMB := float64(model.FileSize) / (1024 * 1024)
+			fmt.Printf("  Size: %.2f MB\n", sizeMB)
+			fmt.Printf("  Path: %s\n", model.DownloadPath)
 		}
 	},
 }
@@ -210,21 +380,11 @@ func init() {
 	rootCmd.AddCommand(tuiCmd)
 	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(versionCmd)
-	rootCmd.AddCommand(updateCmd)
+	rootCmd.AddCommand(checkUpdateCmd)
+	rootCmd.AddCommand(selfUpdateCmd)
 	rootCmd.AddCommand(examplesCmd)
 	rootCmd.AddCommand(healthCmd)
-
-	addCmd.Flags().StringP("type", "t", "note", "Memory type")
-	addCmd.Flags().StringP("title", "", "", "Memory title")
-	addCmd.Flags().StringP("content", "c", "", "Memory content")
-	addCmd.Flags().StringP("source", "s", "user", "Memory source")
-	addCmd.Flags().StringSliceP("tags", "", []string{}, "Memory tags")
-
-	listCmd.Flags().StringP("type", "t", "", "Filter by type")
-	listCmd.Flags().StringP("status", "s", "", "Filter by status")
-	listCmd.Flags().IntP("limit", "l", 50, "Limit results")
-
-	initCmd.Flags().BoolP("with-models", "m", false, "Enable embedding models")
+	rootCmd.AddCommand(modelCmd)
 }
 
 var tuiCmd = &cobra.Command{

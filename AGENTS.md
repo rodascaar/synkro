@@ -14,6 +14,12 @@ go build -o synkro ./cmd/synkro/
 ./synkro list --limit 10
 ./synkro search "query"
 
+# Model management (NEW)
+./synkro model list                  # List available embedding models
+./synkro model info all-MiniLM-L6-v2 # Get model details
+./synkro model download all-MiniLM-L6-v2    # Download specific model
+./synkro model delete all-MiniLM-L6-v2 # Delete downloaded model
+
 # Run TUI
 ./synkro tui
 
@@ -49,6 +55,7 @@ memory.db           # SQLite database (created by init)
 - **Database**: SQLite3 with FTS5 virtual tables, WAL mode, foreign keys
 - **Search**: FTS5 full-text with BM25 scoring + hybrid search (vectorial + FTS5)
 - **Embeddings**: 384-dim vectors using TF-IDF + N-grams with stopwords filtering, persistent cache in SQLite
+- **ONNX Models**: Support for high-quality sentence-transformers models (all-MiniLM-L6-v2, paraphrase-multilingual-MiniLM-L12-v2, stsb-roberta-base-v2) with automatic download from Hugging Face
 - **MCP Server**: Fully implemented using github.com/modelcontextprotocol/go-sdk
 - **Testing**: Comprehensive test suite with >90% coverage
 - **Linting**: golangci-lint configured with essential linters
@@ -94,7 +101,9 @@ SYNKRO_SESSION_BUFFER=20           # Ring buffer size (default: 20)
 SYNKRO_CACHE_SIZE=1000             # Embedding cache size (default: 1000)
 SYNKRO_SIMILARITY_THRESHOLD=0.5     # Minimum similarity for results (default: 0.5)
 SYNKRO_EMBEDDING_DIM=384           # Embedding dimension (default: 384)
-SYNKRO_MODEL_TYPE=tfidf             # Model type (default: tfidf)
+SYNKRO_MODEL_TYPE=tfidf             # Model type (default: tfidf) or onnx
+SYNKRO_MODEL_DIR=models             # Model download directory (default: models)
+SYNKRO_PREFERRED_MODEL=all-MiniLM-L6-v2  # Default ONNX model to use
 ```
 
 ## Verification & Testing

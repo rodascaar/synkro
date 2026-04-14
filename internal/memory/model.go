@@ -84,6 +84,17 @@ type HybridSearchResult struct {
 	MatchType     string  `json:"match_type"`     // "vectorial", "fts5", "both"
 }
 
+type FTS5Result struct {
+	Memory *Memory
+	Rank   float64 // BM25 rank from FTS5
+	Score  float64 // Normalized score (0.0-1.0)
+}
+
+type VectorResult struct {
+	Memory *Memory
+	Score  float64 // Cosine similarity (0.0-1.0)
+}
+
 type HybridSearchFilter struct {
 	Type          string
 	Status        string

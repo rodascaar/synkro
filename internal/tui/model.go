@@ -64,6 +64,7 @@ type keyMap struct {
 	Add    key.Binding
 	Quit   key.Binding
 	Graph  key.Binding
+	List   key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
@@ -76,7 +77,7 @@ func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down},
 		{k.Enter, k.Escape},
-		{k.Search, k.Graph},
+		{k.Search, k.Graph, k.List},
 		{k.Add, k.Quit},
 	}
 }
@@ -114,11 +115,16 @@ var keys = keyMap{
 		key.WithKeys("g"),
 		key.WithHelp("g", "graph"),
 	),
+	List: key.NewBinding(
+		key.WithKeys("l"),
+		key.WithHelp("l", "list"),
+	),
 }
 
 type model struct {
 	repo       *memory.Repository
 	graph      *graph.Graph
+	graphView  *GraphView
 	memories   []*memory.Memory
 	selected   int
 	sidebarSel int
@@ -138,6 +144,7 @@ func InitialModel(repo *memory.Repository, g *graph.Graph) *model {
 	m := &model{
 		repo:       repo,
 		graph:      g,
+		graphView:  NewGraphView(),
 		memories:   []*memory.Memory{},
 		selected:   0,
 		sidebarSel: 0,
@@ -238,21 +245,24 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case key.Matches(msg, keys.Up):
-			if m.selected > 0 {
+			if m.selected > 0 && !m.showGraph {
 				m.selected--
 			}
 			return m, nil
 
 		case key.Matches(msg, keys.Down):
-			displayed := m.getDisplayedMemories()
-			if m.selected < len(displayed)-1 {
-				m.selected++
+			if !m.showGraph {
+				displayed := m.getDisplayedMemories()
+				if m.selected < len(displayed)-1 {
+					m.selected++
+				}
 			}
 			return m, nil
 
 		case key.Matches(msg, keys.Enter):
-			if len(m.getDisplayedMemories()) > 0 {
+			if len(m.getDisplayedMemories()) > 0 && !m.showGraph {
 				m.showGraph = !m.showGraph
+				m.selected = 0
 			}
 			return m, nil
 
@@ -266,6 +276,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, keys.Search):
 			m.searching = true
+			m.showGraph = false
 			m.searchBox.Focus()
 			m.searchBox.SetValue("")
 			m.selected = 0
@@ -278,6 +289,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keys.Graph):
 			if len(m.getDisplayedMemories()) > 0 {
 				m.showGraph = true
+			}
+			return m, nil
+
+		case key.Matches(msg, keys.List):
+			if m.showGraph {
+				m.showGraph = false
 			}
 			return m, nil
 		}
@@ -357,13 +374,21 @@ func (m *model) renderSidebar() string {
 	content.WriteString("\n")
 	content.WriteString("SHORTCUTS\n\n")
 	content.WriteString("/  : Search\n")
-	content.WriteString("g  : Graph\n")
+	if m.showGraph {
+		content.WriteString("l  : List\n")
+	} else {
+		content.WriteString("g  : Graph\n")
+	}
 	content.WriteString("q  : Quit\n")
 
 	return content.String()
 }
 
 func (m *model) renderContent() string {
+	if m.showGraph {
+		return m.renderGraphView()
+	}
+
 	if m.searching {
 		return "SEARCH\n\n" + m.searchBox.View()
 	}
@@ -418,6 +443,47 @@ func (m *model) renderContent() string {
 	}
 
 	return content.String()
+}
+
+func (m *model) renderGraphView() string {
+	displayed := m.getDisplayedMemories()
+
+	if len(displayed) == 0 {
+		return emptyStyle.Render("No memories to display in graph")
+	}
+
+	m.graphView = NewGraphView()
+
+	for _, mem := range displayed {
+		level := 0
+		if mem.Type == "decision" {
+			level = 0
+		} else if mem.Type == "task" {
+			level = 1
+		} else {
+			level = 2
+		}
+
+		node := m.graphView.AddMemory(mem, level)
+
+		relations, err := m.graph.GetRelations(m.ctx, mem.ID)
+		if err == nil {
+			for _, rel := range relations {
+				targetMem, err := m.repo.Get(m.ctx, rel.TargetID)
+				if err != nil {
+					continue
+				}
+				targetNode := m.graphView.AddMemory(targetMem, level+1)
+				m.graphView.AddRelation(node, targetNode, rel.Type, rel.Strength)
+			}
+		}
+	}
+
+	availableWidth := m.width - 30
+	availableHeight := m.height - 5
+	m.graphView.CalculateLayout(availableWidth, availableHeight)
+
+	return m.graphView.Render()
 }
 
 func (m *model) renderDetail() string {

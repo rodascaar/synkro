@@ -1,0 +1,193 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            artifact_name: synkro-linux-amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            artifact_name: synkro-linux-arm64
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+            artifact_name: synkro-darwin-amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            artifact_name: synkro-darwin-arm64
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            artifact_name: synkro-windows-amd64
+          - os: windows-latest
+            goos: windows
+            goarch: arm64
+            artifact_name: synkro-windows-arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            VERSION="dev-$(git rev-parse --short HEAD)"
+          else
+            VERSION="${{ github.ref }}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build binary
+        run: |
+          echo "Building ${{ matrix.artifact_name }}..."
+          
+          # Enable CGO for SQLite support
+          export CGO_ENABLED=1
+          
+          # Build with version info
+          go build -v \
+            -tags sqlite_fts5 \
+            -ldflags="-s -w \
+            -X main.Version=${{ steps.version.outputs.VERSION }} \
+            -X main.Commit=${{ github.sha }}" \
+            -trimpath \
+            -o synkro${{ matrix.goos == 'windows' && '.exe' || '' }} \
+            ./cmd/synkro
+          
+          # Verify binary
+          ./synkro${{ matrix.goos == 'windows' && '.exe' || '' }} version
+
+      - name: Create installer scripts
+        run: |
+          echo "Creating installer for ${{ matrix.artifact_name }}..."
+          
+          mkdir -p package
+          
+          # Copy binary
+          cp synkro${{ matrix.goos == 'windows' && '.exe' || '' }} package/
+          
+          # Create platform-specific installer
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            # Copy PowerShell installer
+            cp install.ps1 package/
+            
+            # Create batch file for quick install
+            cat > package/install.bat <<'EOF'
+            @echo off
+            powershell -ExecutionPolicy Bypass -File -File install.ps1
+            EOF
+          else
+            # Copy bash installer
+            cp install.sh package/
+            chmod +x package/install.sh
+            
+            # Create tarball
+            tar czf package/synkro-${{ steps.version.outputs.VERSION }}-${{ matrix.artifact_name }}.tar.gz \
+              package/synkro${{ matrix.goos == 'windows' && '.exe' || '' }} \
+              package/install.${{ matrix.os == 'windows-latest' && 'ps1' || 'sh' }}
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: package/
+          retention-days: 30
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: package/synkro-${{ steps.version.outputs.VERSION }}-${{ matrix.artifact_name }}.tar.gz
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          name: ${{ steps.version.outputs.VERSION }}
+          body: |
+            ## 🚀 Synkro ${{ steps.version.outputs.VERSION }}
+            
+            ### 📦 What's New
+            - Professional installer system with one-command installation
+            - Multi-platform support (macOS/Linux/Windows x86_64/ARM64)
+            - Enhanced hybrid search (FTS5 + semantic embeddings)
+            - Visual relationship graph in TUI
+            - MCP server integration with official Go SDK
+            
+            ### 🔨 Bug Fixes
+            - Various performance improvements
+            - Enhanced installation process
+            
+            ### 📚 Documentation
+            - Updated installation guide
+            - Complete documentation set
+            
+            ### ⬇️  Downloads
+            - **macOS AMD64**: synkro-${{ steps.version.outputs.VERSION }}-darwin-amd64.tar.gz
+            - **macOS ARM64**: synkro-${{ steps.version.outputs.VERSION }}-darwin-arm64.tar.gz
+            - **Linux AMD64**: synkro-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz
+            - **Linux ARM64**: synkro-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz
+            - **Windows AMD64**: synkro-${{ steps.version.outputs.VERSION }}-windows-amd64.tar.gz
+            - **Windows ARM64**: synkro-${{ steps.version.outputs.VERSION }}-windows-arm64.tar.gz
+            
+            ### 🚀 Quick Start
+            ```bash
+            # One-command installation
+            curl -fsSL https://raw.githubusercontent.com/rodascaar/synkro/main/install.sh | bash
+            
+            # Or download platform-specific binary
+            wget https://github.com/rodascaar/synkro/releases/download/v${{ steps.version.outputs.VERSION }}/synkro-${{ matrix.artifact_name }}.tar.gz
+            ```
+            
+            --- 
+            
+            **Full Changelog**: https://github.com/rodascaar/synkro/compare/v${{ steps.version.outputs.VERSION }}...HEAD
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Run tests
+        run: |
+          go test -v -race -coverprofile=coverage.out ./...
+          go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.html

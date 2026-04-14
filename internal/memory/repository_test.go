@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/rodascaar/synkro/internal/db"
+	"github.com/rodascaar/synkro/internal/embeddings"
 	"github.com/rodascaar/synkro/internal/memory"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -146,6 +147,7 @@ func TestRepository_HybridSearch(t *testing.T) {
 	defer cleanup()
 
 	repo := memory.NewRepository(d.DB())
+	repo.SetEmbeddingGenerator(embeddings.NewTFIDFEmbeddingGenerator(nil))
 
 	mem := &memory.Memory{
 		Type:    "decision",

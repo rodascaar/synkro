@@ -10,24 +10,29 @@ Sistema de gestión de memoria con embeddings, grafo de relaciones y pruning int
 
 ## 🚀 Quick Start
 
-### One-line Installation
+### One-Command Installation (Recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rodascaar/synkro/main/install.sh | sh
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/rodascaar/synkro/main/install.sh | bash
+
+# Windows
+irm https://raw.githubusercontent.com/rodascaar/synkro/main/install.ps1 | iex
 ```
 
 ### Quick Commands
 
 ```bash
-./synkro init           # Inicializar
-./synkro add            # Agregar memoria
-./synkro list           # Listar
-./synkro search         # Buscar
-./synkro tui            # TUI profesional
+./synkro init           # Initialize
+./synkro add            # Add memory
+./synkro list           # List
+./synkro search         # Search
+./synkro model list     # List embedding models
+./synkro tui            # Professional TUI
 ./synkro mcp            # MCP server
 ```
 
-## 📚 Documentación
+## 📚 Documentation
 
 👋 **Ver toda la documentación en** [docs/](docs/)
 
@@ -96,9 +101,41 @@ Ver más en: [INSTALL.md](docs/INSTALL.md)
 
 ## 📦 Installation
 
-### One-line (macOS/Linux)
+### One-Command Installation (Recommended)
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rodascaar/synkro/main/install.sh | sh
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/rodascaar/synkro/main/install.sh | bash
+
+# Windows
+irm https://raw.githubusercontent.com/rodascaar/synkro/main/install.ps1 | iex
+```
+
+**Professional installer features:**
+- ✅ Automatic platform detection (macOS/Linux/Windows, Intel/ARM)
+- ✅ Dependency checking (Go, disk space, CGO)
+- ✅ Binary download or source fallback
+- ✅ Shell integration (bash/zsh/PowerShell)
+- ✅ Database initialization
+- ✅ Optional embedding model download
+
+### Manual Installation
+
+See [QUICK_INSTALL.md](QUICK_INSTALL.md) for detailed installation guide.
+
+### Build from Source
+
+```bash
+# Clone repository
+git clone https://github.com/rodascaar/synkro.git
+cd synkro
+
+# Build binary
+make build
+# or: go build -o synkro ./cmd/synkro/
+
+# Install locally
+make install
 ```
 
 ### Manual

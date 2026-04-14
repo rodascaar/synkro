@@ -58,9 +58,13 @@ func TestModel_Update_Keys(t *testing.T) {
 	assert.NotNil(t, newModel)
 	assert.Nil(t, cmd)
 
-	newModel, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	newModel, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	assert.NotNil(t, newModel)
 	assert.Nil(t, cmd)
+
+	newModel, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	assert.NotNil(t, newModel)
+	assert.NotNil(t, cmd)
 }
 
 func TestAddModel_Update(t *testing.T) {

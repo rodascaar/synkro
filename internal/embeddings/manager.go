@@ -10,24 +10,27 @@ import (
 type ModelType string
 
 const (
-	ModelTypeTFIDF  ModelType = "tfidf"
-	ModelTypeMiniLM ModelType = "minilm"
+	ModelTypeTFIDF ModelType = "tfidf"
+	ModelTypeONNX  ModelType = "onnx"
 )
 
 type Config struct {
-	ModelType   ModelType
-	ModelPath   string
-	EmbedOnInit bool
-	EmbedDim    int
-	DB          *sql.DB
+	ModelType      ModelType
+	ModelPath      string
+	EmbedOnInit    bool
+	EmbedDim       int
+	DB             *sql.DB
+	PreferredModel string
 }
 
 type EmbeddingManager struct {
-	config  Config
-	tfidf   *TFIDFEmbeddingGenerator
-	enabled bool
-	mu      sync.RWMutex
-	cache   *Cache
+	config   Config
+	tfidf    *TFIDFEmbeddingGenerator
+	onnx     *ONNXEmbeddingGenerator
+	modelMgr *ModelManager
+	enabled  bool
+	mu       sync.RWMutex
+	cache    *Cache
 }
 
 func NewEmbeddingManager(config Config) (*EmbeddingManager, error) {
@@ -53,15 +56,26 @@ func NewEmbeddingManager(config Config) (*EmbeddingManager, error) {
 		mgr.enabled = true
 		return mgr, nil
 
-	case ModelTypeMiniLM:
-		if !config.EmbedOnInit {
-			mgr.enabled = false
+	case ModelTypeONNX:
+		modelMgr := NewModelManager(&ManagerConfig{
+			DownloadDir:    config.ModelPath,
+			CacheDir:       "cache",
+			MaxModels:      5,
+			AutoDownload:   config.EmbedOnInit,
+			PreferredModel: config.PreferredModel,
+		})
+
+		onnxGen, err := NewONNXEmbeddingGenerator(modelMgr, mgr.cache)
+		if err != nil {
+			fmt.Printf("Failed to initialize ONNX embeddings: %v\n", err)
+			fmt.Println("Falling back to TF-IDF")
+			mgr.tfidf = NewTFIDFEmbeddingGenerator(mgr.cache)
+			mgr.enabled = true
 			return mgr, nil
 		}
 
-		fmt.Println("MiniLM embeddings require external dependencies")
-		fmt.Println("For now, falling back to TF-IDF")
-		mgr.tfidf = NewTFIDFEmbeddingGenerator(mgr.cache)
+		mgr.onnx = onnxGen
+		mgr.modelMgr = modelMgr
 		mgr.enabled = true
 		return mgr, nil
 
@@ -90,7 +104,10 @@ func (m *EmbeddingManager) Generate(ctx context.Context, text string) ([]float32
 	switch m.config.ModelType {
 	case ModelTypeTFIDF:
 		return m.tfidf.Generate(ctx, text)
-	case ModelTypeMiniLM:
+	case ModelTypeONNX:
+		if m.onnx != nil {
+			return m.onnx.Generate(ctx, text)
+		}
 		return m.tfidf.Generate(ctx, text)
 	default:
 		return nil, fmt.Errorf("unsupported model type: %s", m.config.ModelType)
@@ -105,7 +122,10 @@ func (m *EmbeddingManager) GenerateBatch(ctx context.Context, texts []string) ([
 	switch m.config.ModelType {
 	case ModelTypeTFIDF:
 		return m.tfidf.GenerateBatch(ctx, texts)
-	case ModelTypeMiniLM:
+	case ModelTypeONNX:
+		if m.onnx != nil {
+			return m.onnx.GenerateBatch(ctx, texts)
+		}
 		return m.tfidf.GenerateBatch(ctx, texts)
 	default:
 		return nil, fmt.Errorf("unsupported model type: %s", m.config.ModelType)
@@ -116,7 +136,10 @@ func (m *EmbeddingManager) Dimension() int {
 	switch m.config.ModelType {
 	case ModelTypeTFIDF:
 		return m.tfidf.Dimension()
-	case ModelTypeMiniLM:
+	case ModelTypeONNX:
+		if m.onnx != nil {
+			return m.onnx.Dimension()
+		}
 		return m.config.EmbedDim
 	default:
 		return EmbeddingDimension
@@ -127,5 +150,12 @@ func (m *EmbeddingManager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.enabled = false
+
+	if m.onnx != nil {
+		if err := m.onnx.Close(); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
