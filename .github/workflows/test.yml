@@ -9,6 +9,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: 1
 
     steps:
     - uses: actions/checkout@v4
@@ -24,17 +26,12 @@ jobs:
         sudo apt-get install -y gcc libsqlite3-dev
         go mod download
 
-    - name: Install golangci-lint
-      uses: golangci/golangci-lint-action@v6
+    - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v7
       with:
-        version: v2.1.0
-
-    - name: Run linter
-      run: golangci-lint run ./...
+        version: v2
 
     - name: Run tests
-      env:
-        CGO_ENABLED: 1
       run: go test -v -race -coverprofile=coverage.out ./...
 
     - name: Upload coverage
