@@ -23,10 +23,14 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y gcc libsqlite3-dev
         go mod download
-        go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+    - name: Install golangci-lint
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: v2
 
     - name: Run linter
-      run: golangci-lint run --config=.golangci.yml ./...
+      run: golangci-lint run ./...
 
     - name: Run tests
       run: go test -v -race -coverprofile=coverage.out ./...

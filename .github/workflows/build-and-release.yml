@@ -64,14 +64,30 @@ jobs:
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Install system dependencies
+        if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
+        run: |
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            sudo apt-get update && sudo apt-get install -y gcc libsqlite3-dev
+          fi
+
+      - name: Install Windows dependencies
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          choco install mingw -y
+          echo "CC=gcc" >> "$GITHUB_ENV"
+          echo "CGO_ENABLED=1" >> "$GITHUB_ENV"
+
       - name: Build binary
+        shell: bash
         run: |
           echo "Building ${{ matrix.artifact_name }}..."
           
-          # Enable CGO for SQLite support
-          export CGO_ENABLED=1
+          if [ "${{ matrix.os }}" != "windows-latest" ]; then
+            export CGO_ENABLED=1
+          fi
           
-          # Build with version info
           go build -v \
             -tags sqlite_fts5 \
             -ldflags="-s -w \
@@ -81,7 +97,6 @@ jobs:
             -o synkro${{ matrix.goos == 'windows' && '.exe' || '' }} \
             ./cmd/synkro
           
-          # Verify binary
           ./synkro${{ matrix.goos == 'windows' && '.exe' || '' }} version
 
       - name: Create installer scripts
@@ -179,7 +194,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
           cache: true
 
       - name: Run tests
