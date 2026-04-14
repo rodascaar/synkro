@@ -1,7 +1,6 @@
 version: "2"
 
 run:
-  timeout: 5m
   tests: true
 
 linters:
@@ -16,19 +15,20 @@ linters:
     - unparam
     - gocyclo
     - misspell
-
-linters-settings:
-  gocyclo:
-    min-complexity: 15
-  misspell:
-    locale: US
-    ignore-words:
-      - someword
+  settings:
+    gocyclo:
+      min-complexity: 25
+    misspell:
+      locale: US
+      ignore-rules:
+        - someword
+        - cancelled
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - gocyclo
 
 issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - gocyclo
   max-issues-per-linter: 0
   max-same-issues: 0

@@ -28,7 +28,7 @@ func (r *Repository) SetEmbeddingGenerator(generator embeddings.EmbeddingGenerat
 func (r *Repository) Create(ctx context.Context, mem *Memory) error {
 	id := mem.ID
 	if id == "" {
-		id = fmt.Sprintf("mem-%s-%04d", time.Now().UTC().Format("20060102150405"), uuid.New().ID()%9000+1000)
+		id = fmt.Sprintf("mem-%s", uuid.New().String()[:8])
 	}
 
 	now := time.Now().UTC()
