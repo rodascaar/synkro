@@ -1,0 +1,177 @@
+package mcp_test
+
+import (
+	"bytes"
+	"context"
+	"os"
+	"testing"
+
+	"github.com/nichogram/synkro/internal/db"
+	"github.com/nichogram/synkro/internal/mcp"
+	"github.com/nichogram/synkro/internal/memory"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func setupMCPTest(t *testing.T) (*db.Database, *memory.Repository, func()) {
+	d, err := db.New(":memory:")
+	require.NoError(t, err)
+
+	repo := memory.NewRepository(d.DB())
+
+	mcp.SetGlobalRepo(repo)
+	mcp.SetGraph(nil)
+	mcp.SetSessionTracker(nil)
+	mcp.SetContextPruner(nil)
+
+	cleanup := func() { d.Close() }
+	return d, repo, cleanup
+}
+
+func TestAddMemory(t *testing.T) {
+	_, repo, cleanup := setupMCPTest(t)
+	defer cleanup()
+
+	input := mcp.AddMemoryInput{
+		Type:    "note",
+		Title:   "Test via MCP",
+		Content: "This is a test",
+		Source:  "agent",
+		Tags:    []string{"test", "mcp"},
+	}
+
+	resultData, err := mcp.AddMemory(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("AddMemory result: %s", string(resultData))
+
+	memories, err := repo.Search(context.Background(), "", memory.MemoryFilter{})
+	assert.NoError(t, err)
+	assert.Greater(t, len(memories), 0)
+	assert.Equal(t, "Test via MCP", memories[0].Title)
+}
+
+func TestGetMemory(t *testing.T) {
+	_, repo, cleanup := setupMCPTest(t)
+	defer cleanup()
+
+	mem := &memory.Memory{
+		Type:    "note",
+		Title:   "Get Test",
+		Content: "Test content",
+		Source:  "test",
+		Status:  "active",
+	}
+
+	require.NoError(t, repo.Create(context.Background(), mem))
+
+	input := mcp.GetMemoryInput{ID: mem.ID}
+	var buf bytes.Buffer
+	resultData, err := mcp.GetMemory(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fetched, err := repo.Get(context.Background(), mem.ID)
+	assert.NoError(t, err)
+	assert.Equal(t, mem.Title, fetched.Title)
+}
+
+func TestListMemory(t *testing.T) {
+	_, repo, cleanup := setupMCPTest(t)
+	defer cleanup()
+
+	for i := 0; i < 3; i++ {
+		mem := &memory.Memory{
+			Type:    "note",
+			Title:   "List Test " + string(rune('0'+i)),
+			Content: "Test content",
+			Source:  "test",
+			Status:  "active",
+		}
+		require.NoError(t, repo.Create(context.Background(), mem))
+	}
+
+	input := mcp.ListMemoryInput{Type: "note", Limit: 10}
+	var buf bytes.Buffer
+	resultData, err := mcp.ListMemory(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSearchMemory(t *testing.T) {
+	_, repo, cleanup := setupMCPTest(t)
+	defer cleanup()
+
+	mem := &memory.Memory{
+		Type:    "note",
+		Title:   "Search Test",
+		Content: "Test content for search",
+		Source:  "test",
+		Status:  "active",
+	}
+
+	require.NoError(t, repo.Create(context.Background(), mem))
+
+	input := mcp.SearchMemoryInput{Query: "Search", Limit: 10}
+	var buf bytes.Buffer
+	if err := mcp.SearchMemory(input, &buf); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUpdateMemory(t *testing.T) {
+	_, repo, cleanup := setupMCPTest(t)
+	defer cleanup()
+
+	mem := &memory.Memory{
+		Type:    "note",
+		Title:   "Update Test",
+		Content: "Original content",
+		Source:  "test",
+		Status:  "active",
+	}
+
+	require.NoError(t, repo.Create(context.Background(), mem))
+
+	newTitle := "Updated Title"
+	input := mcp.UpdateMemoryInput{ID: mem.ID, Title: newTitle}
+
+	var buf bytes.Buffer
+	if err := mcp.UpdateMemory(input, &buf); err != nil {
+		t.Fatal(err)
+	}
+
+	fetched, err := repo.Get(context.Background(), mem.ID)
+	assert.NoError(t, err)
+	assert.Equal(t, newTitle, fetched.Title)
+}
+
+func TestArchiveMemory(t *testing.T) {
+	_, repo, cleanup := setupMCPTest(t)
+	defer cleanup()
+
+	mem := &memory.Memory{
+		Type:    "note",
+		Title:   "Archive Test",
+		Content: "Test content",
+		Source:  "test",
+		Status:  "active",
+	}
+
+	require.NoError(t, repo.Create(context.Background(), mem))
+
+	input := mcp.ArchiveMemoryInput{ID: mem.ID}
+
+	var buf bytes.Buffer
+	if err := mcp.ArchiveMemory(input, &buf); err != nil {
+		t.Fatal(err)
+	}
+
+	fetched, err := repo.Get(context.Background(), mem.ID)
+	assert.NoError(t, err)
+	assert.Equal(t, "archived", fetched.Status)
+}

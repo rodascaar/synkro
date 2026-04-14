@@ -1,0 +1,62 @@
+version: 2
+before:
+  hooks:
+    - go mod tidy
+    - go mod download
+
+builds:
+  - id: synkro
+    env:
+      - CGO_ENABLED=1
+    main: ./cmd/synkro
+    binary: synkro
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    goarm:
+      - 7
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+    tags:
+      - sqlite_fts5
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+release:
+  github:
+    owner: rodascaar
+    name: Synkro v{{ .Version }}
+    draft: false
+    prerelease: false
+    mode: append
+
+  header: |
+    ## 🚀 What's New in Synkro v{{ .Version }}
+
+    ### 📦 Installation
+
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/rodascaar/synkro/main/install.sh | sh
+    ```
+
+    Or download from the releases below.
+
+    ### 📋 Changes
+
+    {{ .Changelog }}
