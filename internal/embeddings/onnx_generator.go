@@ -132,7 +132,7 @@ func (g *ONNXEmbeddingGenerator) loadModel(ctx context.Context) error {
 	}
 
 	if g.session != nil {
-		g.session.Destroy()
+		_ = g.session.Destroy()
 	}
 
 	g.mu.Lock()
@@ -205,26 +205,26 @@ func (g *ONNXEmbeddingGenerator) Generate(ctx context.Context, text string) ([]f
 	if err != nil {
 		return nil, fmt.Errorf("failed to create input_ids tensor: %w", err)
 	}
-	defer inputIDsTensor.Destroy()
+	defer func() { _ = inputIDsTensor.Destroy() }()
 
 	attentionMaskTensor, err := ort.NewTensor(ort.NewShape(1, seqLen), attentionMask)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create attention_mask tensor: %w", err)
 	}
-	defer attentionMaskTensor.Destroy()
+	defer func() { _ = attentionMaskTensor.Destroy() }()
 
 	tokenTypeIDsTensor, err := ort.NewTensor(ort.NewShape(1, seqLen), tokenTypeIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create token_type_ids tensor: %w", err)
 	}
-	defer tokenTypeIDsTensor.Destroy()
+	defer func() { _ = tokenTypeIDsTensor.Destroy() }()
 
 	outputShape := ort.NewShape(1, seqLen, int64(dim))
 	outputTensor, err := ort.NewEmptyTensor[float32](outputShape)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create output tensor: %w", err)
 	}
-	defer outputTensor.Destroy()
+	defer func() { _ = outputTensor.Destroy() }()
 
 	inputs := []ort.Value{inputIDsTensor, attentionMaskTensor, tokenTypeIDsTensor}
 	outputs := []ort.Value{outputTensor}
@@ -309,7 +309,7 @@ func (g *ONNXEmbeddingGenerator) Close() error {
 	defer g.mu.Unlock()
 
 	if g.session != nil {
-		g.session.Destroy()
+		_ = g.session.Destroy()
 		g.session = nil
 	}
 
@@ -344,7 +344,7 @@ func DownloadVocabularyFromHuggingFace(modelName, downloadDir string) error {
 	if err != nil {
 		return fmt.Errorf("failed to download vocabulary: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to download vocabulary: HTTP %d", resp.StatusCode)
@@ -354,10 +354,10 @@ func DownloadVocabularyFromHuggingFace(modelName, downloadDir string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create vocab file: %w", err)
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	if _, err := io.Copy(out, resp.Body); err != nil {
-		os.Remove(vocabPath)
+		_ = os.Remove(vocabPath)
 		return fmt.Errorf("failed to write vocab file: %w", err)
 	}
 

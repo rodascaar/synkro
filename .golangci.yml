@@ -4,9 +4,6 @@ run:
   tests: true
 
 linters:
-  disable:
-    - gosec
-    - errcheck
   enable:
     - govet
     - ineffassign
@@ -14,6 +11,7 @@ linters:
     - unparam
     - gocyclo
     - misspell
+    - errcheck
     - staticcheck
   settings:
     gocyclo:

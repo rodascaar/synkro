@@ -19,7 +19,7 @@ func setupTestDB(t *testing.T) *db.Database {
 	tmpFile := t.TempDir() + "/test.db"
 	database, err := db.New(tmpFile)
 	require.NoError(t, err)
-	t.Cleanup(func() { database.Close() })
+	t.Cleanup(func() { _ = database.Close() })
 	return database
 }
 
@@ -63,7 +63,7 @@ func TestRepository_UpdateLastQuery(t *testing.T) {
 	ctx := context.Background()
 
 	session := &Session{ID: "sess1", CreatedAt: now(), UpdatedAt: now()}
-	repo.Save(ctx, session)
+	_ = repo.Save(ctx, session)
 
 	err := repo.UpdateLastQuery(ctx, "sess1", "new query")
 	require.NoError(t, err)
@@ -78,15 +78,15 @@ func TestRepository_MarkDelivered(t *testing.T) {
 	ctx := context.Background()
 
 	session := &Session{ID: "sess1", CreatedAt: now(), UpdatedAt: now()}
-	repo.Save(ctx, session)
+	_ = repo.Save(ctx, session)
 
-	database.DB().Exec(`INSERT OR IGNORE INTO memories (id, created_at, updated_at, type, title, content, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+	_, _ = database.DB().Exec(`INSERT OR IGNORE INTO memories (id, created_at, updated_at, type, title, content, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		"mem1", now().Format(time.RFC3339Nano), now().Format(time.RFC3339Nano), "note", "test", "test", "active")
 
 	err := repo.MarkDelivered(ctx, "sess1", "mem1")
 	require.NoError(t, err)
 
-	database.DB().Exec(`INSERT OR IGNORE INTO memories (id, created_at, updated_at, type, title, content, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+	_, _ = database.DB().Exec(`INSERT OR IGNORE INTO memories (id, created_at, updated_at, type, title, content, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		"mem2", now().Format(time.RFC3339Nano), now().Format(time.RFC3339Nano), "note", "test", "test", "active")
 
 	err = repo.MarkDelivered(ctx, "sess1", "mem2")
@@ -103,13 +103,13 @@ func TestRepository_GetRecentDeliveries_Limit(t *testing.T) {
 	ctx := context.Background()
 
 	session := &Session{ID: "sess1", CreatedAt: now(), UpdatedAt: now()}
-	repo.Save(ctx, session)
+	_ = repo.Save(ctx, session)
 
 	for i := 0; i < 5; i++ {
 		memID := "mem" + string(rune('a'+i))
-		database.DB().Exec(`INSERT OR IGNORE INTO memories (id, created_at, updated_at, type, title, content, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		_, _ = database.DB().Exec(`INSERT OR IGNORE INTO memories (id, created_at, updated_at, type, title, content, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			memID, now().Format(time.RFC3339Nano), now().Format(time.RFC3339Nano), "note", "test", "test", "active")
-		repo.MarkDelivered(ctx, "sess1", memID)
+		_ = repo.MarkDelivered(ctx, "sess1", memID)
 	}
 
 	deliveries, err := repo.GetRecentDeliveries(ctx, "sess1", 3)
@@ -123,10 +123,10 @@ func TestRepository_Save_Upsert(t *testing.T) {
 	ctx := context.Background()
 
 	session := &Session{ID: "sess1", LastQuery: "first", CreatedAt: now(), UpdatedAt: now()}
-	repo.Save(ctx, session)
+	_ = repo.Save(ctx, session)
 
 	session.LastQuery = "second"
-	repo.Save(ctx, session)
+	_ = repo.Save(ctx, session)
 
 	got, _ := repo.Get(ctx, "sess1")
 	assert.Equal(t, "second", got.LastQuery)

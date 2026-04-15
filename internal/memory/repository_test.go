@@ -15,7 +15,7 @@ func setupTestDB(t *testing.T) (*db.Database, func()) {
 	d, err := db.New(":memory:")
 	require.NoError(t, err)
 
-	cleanup := func() { d.Close() }
+	cleanup := func() { _ = d.Close() }
 	return d, cleanup
 }
 

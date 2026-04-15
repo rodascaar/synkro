@@ -50,7 +50,7 @@ func getMigrations() []Migration {
 				if err != nil {
 					return fmt.Errorf("failed to query memories for tag migration: %w", err)
 				}
-				defer rows.Close()
+				defer func() { _ = rows.Close() }()
 
 				type memTags struct {
 					id   string
@@ -109,7 +109,7 @@ func getMigrations() []Migration {
 					}
 					return fmt.Errorf("failed to query existing embeddings: %w", err)
 				}
-				defer rows.Close()
+				defer func() { _ = rows.Close() }()
 
 				type existingEmbedding struct {
 					memoryID  string
@@ -192,13 +192,13 @@ func (d *Database) runMigrations() error {
 		}
 
 		if err := m.Up(ctx, tx); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return fmt.Errorf("migration %d (%s) failed: %w", m.Version, m.Name, err)
 		}
 
 		_, err = tx.ExecContext(ctx, `INSERT INTO _migrations (version, name) VALUES (?, ?)`, m.Version, m.Name)
 		if err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return fmt.Errorf("failed to record migration %d: %w", m.Version, err)
 		}
 

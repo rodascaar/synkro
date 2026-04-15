@@ -101,7 +101,7 @@ func (r *Repository) loadTags(ctx context.Context, memoryID string) ([]string, e
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tags []string
 	for rows.Next() {
@@ -177,7 +177,7 @@ func (r *Repository) Search(ctx context.Context, query string, filter MemoryFilt
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var memories []*Memory
 	for rows.Next() {
@@ -250,7 +250,7 @@ func (r *Repository) loadMemoriesByIDs(ctx context.Context, vecResults []*db.Vec
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	idOrder := make(map[string]int)
 	for i, vr := range vecResults {
@@ -306,7 +306,7 @@ func (r *Repository) fallbackVectorialSearch(ctx context.Context, queryEmbedding
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type resultWithEmbedding struct {
 		Memory    *Memory
@@ -452,7 +452,7 @@ func (r *Repository) searchWithBM25(ctx context.Context, query string, filter Hy
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	results := make(map[string]*FTS5Result)
 	for rows.Next() {
@@ -508,7 +508,7 @@ func (r *Repository) searchByVector(ctx context.Context, queryEmbedding []float3
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	results := make(map[string]*VectorResult)
 	for rows.Next() {
@@ -758,7 +758,7 @@ func (r *Repository) GetByTag(ctx context.Context, tag string, filter MemoryFilt
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var memories []*Memory
 	for rows.Next() {

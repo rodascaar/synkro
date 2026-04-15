@@ -96,7 +96,7 @@ func SearchVectors(ctx context.Context, db *sql.DB, queryEmbedding []float32, k 
 	if err != nil {
 		return nil, fmt.Errorf("vector search failed: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []*VectorSearchResult
 	for rows.Next() {
@@ -131,7 +131,7 @@ func SearchVectorsWithMetadata(ctx context.Context, db *sql.DB, queryEmbedding [
 	if err != nil {
 		return nil, fmt.Errorf("vector search failed: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []*VectorSearchResult
 	for rows.Next() {

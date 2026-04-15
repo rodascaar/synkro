@@ -51,7 +51,7 @@ var addCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
 			os.Exit(1)
 		}
-		defer d.Close()
+		defer func() { _ = d.Close() }()
 
 		repo := memory.NewRepository(d.DB())
 
@@ -98,7 +98,7 @@ var listCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
 			os.Exit(1)
 		}
-		defer d.Close()
+		defer func() { _ = d.Close() }()
 
 		repo := memory.NewRepository(d.DB())
 
@@ -135,7 +135,7 @@ var searchCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
 			os.Exit(1)
 		}
-		defer d.Close()
+		defer func() { _ = d.Close() }()
 
 		repo := memory.NewRepository(d.DB())
 
@@ -167,7 +167,7 @@ var deleteCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
 			os.Exit(1)
 		}
-		defer d.Close()
+		defer func() { _ = d.Close() }()
 
 		repo := memory.NewRepository(d.DB())
 
@@ -201,7 +201,7 @@ var initCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, "Error initializing database: %v\n", err)
 			os.Exit(1)
 		}
-		defer d.Close()
+		defer func() { _ = d.Close() }()
 		fmt.Printf("Database initialized at %s\n", cfg.DatabasePath)
 
 		// Preguntar si es nuevo usuario
@@ -449,7 +449,7 @@ var tuiCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
 			os.Exit(1)
 		}
-		defer d.Close()
+		defer func() { _ = d.Close() }()
 
 		repo := memory.NewRepository(d.DB())
 		graphRepo := graph.NewRepository(d.DB())
@@ -474,7 +474,7 @@ var mcpCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
 			os.Exit(1)
 		}
-		defer d.Close()
+		defer func() { _ = d.Close() }()
 
 		repo := memory.NewRepository(d.DB())
 

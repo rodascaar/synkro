@@ -46,7 +46,7 @@ func (r *Repository) Get(ctx context.Context, memoryID string) ([]*memory.Memory
 	if err != nil {
 		return nil, fmt.Errorf("failed to get relations: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var relations []*memory.MemoryRelation
 	for rows.Next() {
@@ -105,7 +105,7 @@ func (r *Repository) LoadAll(ctx context.Context) ([]*memory.MemoryRelation, err
 	if err != nil {
 		return nil, fmt.Errorf("failed to load all relations: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var relations []*memory.MemoryRelation
 	for rows.Next() {

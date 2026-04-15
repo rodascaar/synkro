@@ -23,7 +23,7 @@ func TestVectorFunctions_Unavailable(t *testing.T) {
 	defer func() { vecAvailable = orig }()
 
 	db := openTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	ctx := context.Background()
 
 	err := InsertVector(ctx, db, "mem-1", []float32{0.1, 0.2})
@@ -54,7 +54,7 @@ func TestVectorFunctions_Available(t *testing.T) {
 	defer func() { vecAvailable = orig }()
 
 	db := openTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	ctx := context.Background()
 
 	_, err := db.ExecContext(ctx, `CREATE VIRTUAL TABLE IF NOT EXISTS memory_vec USING vec0(memory_id TEXT PRIMARY KEY, embedding float[2])`)

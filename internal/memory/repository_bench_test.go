@@ -13,7 +13,7 @@ func BenchmarkRepository_Search(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 
 	repo := NewRepository(d.DB())
 
@@ -39,7 +39,7 @@ func BenchmarkRepository_HybridSearch(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 
 	repo := NewRepository(d.DB())
 

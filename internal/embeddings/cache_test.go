@@ -24,7 +24,7 @@ func setupCacheDB(t *testing.T) (*sql.DB, func()) {
 	)`)
 	require.NoError(t, err)
 
-	return db, func() { db.Close() }
+	return db, func() { _ = db.Close() }
 }
 
 func TestCache_GetMiss(t *testing.T) {

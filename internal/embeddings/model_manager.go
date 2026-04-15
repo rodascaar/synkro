@@ -198,7 +198,7 @@ func (mm *ModelManager) DownloadModel(ctx context.Context, name string, progress
 	if err != nil {
 		return fmt.Errorf("failed to download model: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to download model: HTTP %d", resp.StatusCode)
@@ -208,7 +208,7 @@ func (mm *ModelManager) DownloadModel(ctx context.Context, name string, progress
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	totalSize := resp.ContentLength
 	var downloaded int64
@@ -229,11 +229,11 @@ func (mm *ModelManager) DownloadModel(ctx context.Context, name string, progress
 	close(progressTicker)
 
 	if err != nil {
-		os.Remove(tempPath)
+		_ = os.Remove(tempPath)
 		return fmt.Errorf("failed to write model file: %w", err)
 	}
 
-	file.Close()
+	_ = file.Close()
 
 	if err := os.Rename(tempPath, finalPath); err != nil {
 		return fmt.Errorf("failed to rename model file: %w", err)
@@ -274,7 +274,7 @@ func (mm *ModelManager) downloadVocab(ctx context.Context, model *ModelInfo, mod
 	if err != nil {
 		return fmt.Errorf("failed to download vocabulary: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to download vocabulary: HTTP %d", resp.StatusCode)
@@ -284,7 +284,7 @@ func (mm *ModelManager) downloadVocab(ctx context.Context, model *ModelInfo, mod
 	if err != nil {
 		return fmt.Errorf("failed to create vocab file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	if _, err := io.Copy(file, resp.Body); err != nil {
 		return fmt.Errorf("failed to write vocab file: %w", err)

@@ -42,7 +42,7 @@ func (c *Cache) loadFromDB(ctx context.Context) {
 	if err != nil {
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	c.mu.Lock()
 	defer c.mu.Unlock()

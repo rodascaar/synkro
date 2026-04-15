@@ -123,7 +123,7 @@ func (r *Repository) GetRecentDeliveries(ctx context.Context, sessionID string, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get recent deliveries: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	deliveries := make([]*DeliveredMemory, 0)
 	for rows.Next() {
@@ -153,7 +153,7 @@ func (r *Repository) getDeliveries(ctx context.Context, sessionID string) ([]*De
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deliveries: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	deliveries := make([]*DeliveredMemory, 0)
 	for rows.Next() {

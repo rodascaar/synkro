@@ -47,7 +47,7 @@ func (st *SessionTracker) loadFromDB(ctx context.Context) {
 	if err != nil {
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var sessionID string

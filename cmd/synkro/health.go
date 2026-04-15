@@ -35,7 +35,7 @@ var healthCmd = &cobra.Command{
 			allOK = false
 		} else {
 			fmt.Println("  ✅ Database accessible")
-			d.Close()
+			_ = d.Close()
 		}
 
 		// Check 2: Go Version
@@ -72,7 +72,7 @@ var healthCmd = &cobra.Command{
 				_ = rows.Scan(&name)
 				tables = append(tables, name)
 			}
-			rows.Close()
+			_ = rows.Close()
 
 			expectedTables := []string{"memories", "memories_fts", "memory_embeddings", "embedding_cache", "memory_relations", "sessions", "session_memories"}
 			allTablesExist := true
@@ -94,7 +94,7 @@ var healthCmd = &cobra.Command{
 			} else {
 				allOK = false
 			}
-			d.Close()
+			_ = d.Close()
 		}
 
 		// Check 5: MCP Server Components
@@ -150,7 +150,7 @@ var healthCmd = &cobra.Command{
 				allOK = false
 			}
 
-			d.Close()
+			_ = d.Close()
 		}
 
 		// Check 6: Version

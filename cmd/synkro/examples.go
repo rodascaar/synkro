@@ -100,7 +100,7 @@ var examplesCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
 			os.Exit(1)
 		}
-		defer d.Close()
+		defer func() { _ = d.Close() }()
 
 		repo := memory.NewRepository(d.DB())
 

@@ -116,7 +116,7 @@ func (s *Server) AddMemoryWithWriter(ctx context.Context, input AddMemoryInput, 
 	}
 
 	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	fmt.Fprintf(w, "%s\n", jsonResponse)
+	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
 	return nil
 }
 
@@ -170,7 +170,7 @@ func (s *Server) GetMemory(ctx context.Context, input GetMemoryInput, w io.Write
 	}
 
 	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	fmt.Fprintf(w, "%s\n", jsonResponse)
+	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
 	return nil
 }
 
@@ -193,7 +193,7 @@ func (s *Server) ListMemory(ctx context.Context, input ListMemoryInput, w io.Wri
 	}
 
 	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	fmt.Fprintf(w, "%s\n", jsonResponse)
+	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
 	return nil
 }
 
@@ -226,7 +226,7 @@ func (s *Server) SearchMemory(ctx context.Context, input SearchMemoryInput, w io
 	}
 
 	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	fmt.Fprintf(w, "%s\n", jsonResponse)
+	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
 	return nil
 }
 
@@ -266,7 +266,7 @@ func (s *Server) UpdateMemory(ctx context.Context, input UpdateMemoryInput, w io
 	}
 
 	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	fmt.Fprintf(w, "%s\n", jsonResponse)
+	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
 	return nil
 }
 
@@ -295,7 +295,7 @@ func (s *Server) ArchiveMemory(ctx context.Context, input ArchiveMemoryInput, w 
 	}
 
 	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	fmt.Fprintf(w, "%s\n", jsonResponse)
+	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
 	return nil
 }
 
@@ -349,7 +349,7 @@ func (s *Server) ActivateContext(ctx context.Context, input ActivateContextInput
 		}
 
 		jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-		fmt.Fprintf(w, "%s\n", jsonResponse)
+		_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
 		return nil
 	}
 
@@ -367,7 +367,7 @@ func (s *Server) ActivateContext(ctx context.Context, input ActivateContextInput
 		}
 
 		jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-		fmt.Fprintf(w, "%s\n", jsonResponse)
+		_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
 		return nil
 	}
 
@@ -422,7 +422,7 @@ func (s *Server) ActivateContext(ctx context.Context, input ActivateContextInput
 	if err != nil {
 		return synkroerrors.Wrap(err, "MARSHAL_ERROR", "Error marshaling response", "Please report this issue")
 	}
-	fmt.Fprintf(w, "%s\n", jsonResponse)
+	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
 	return nil
 }
 
@@ -482,7 +482,7 @@ func (s *Server) AddRelation(ctx context.Context, input AddRelationInput, w io.W
 	}
 
 	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	fmt.Fprintf(w, "%s\n", jsonResponse)
+	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
 	return nil
 }
 
@@ -517,7 +517,7 @@ func (s *Server) GetRelations(ctx context.Context, input GetRelationsInput, w io
 	}
 
 	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	fmt.Fprintf(w, "%s\n", jsonResponse)
+	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
 	return nil
 }
 
@@ -551,7 +551,7 @@ func (s *Server) DeleteRelation(ctx context.Context, input DeleteRelationInput, 
 	}
 
 	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	fmt.Fprintf(w, "%s\n", jsonResponse)
+	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
 	return nil
 }
 
@@ -583,7 +583,7 @@ func (s *Server) FindPath(ctx context.Context, input FindPathInput, w io.Writer)
 			"to_id":   input.ToID,
 		}
 		jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-		fmt.Fprintf(w, "%s\n", jsonResponse)
+		_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
 		return nil
 	}
 
@@ -596,7 +596,7 @@ func (s *Server) FindPath(ctx context.Context, input FindPathInput, w io.Writer)
 	}
 
 	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	fmt.Fprintf(w, "%s\n", jsonResponse)
+	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
 	return nil
 }
 

@@ -18,7 +18,7 @@ func setupTestServer(t *testing.T) (*mcp.Server, *memory.Repository) {
 	tmpFile := t.TempDir() + "/test.db"
 	database, err := db.New(tmpFile)
 	require.NoError(t, err)
-	t.Cleanup(func() { database.Close() })
+	t.Cleanup(func() { _ = database.Close() })
 
 	memRepo := memory.NewRepository(database.DB())
 	server := mcp.NewServer(memRepo, nil, nil, nil)
@@ -85,10 +85,10 @@ func TestHandlers_SearchMemories(t *testing.T) {
 	server, memRepo := setupTestServer(t)
 
 	ctx := context.Background()
-	memRepo.Create(ctx, &memory.Memory{
+	_ = memRepo.Create(ctx, &memory.Memory{
 		Type: "note", Title: "Database Design", Content: "PostgreSQL architecture patterns", Status: "active",
 	})
-	memRepo.Create(ctx, &memory.Memory{
+	_ = memRepo.Create(ctx, &memory.Memory{
 		Type: "note", Title: "Cooking Recipe", Content: "How to bake a cake", Status: "active",
 	})
 

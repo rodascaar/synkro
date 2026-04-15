@@ -48,7 +48,7 @@ func checkLatestRelease() (*GitHubRelease, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var release GitHubRelease
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
@@ -131,7 +131,7 @@ func selfUpdateRun(_ []string) error {
 		fmt.Printf("⚠️  Error downloading update: %v\n", err)
 		return err
 	}
-	defer os.Remove(tempFile)
+	defer func() { _ = os.Remove(tempFile) }()
 
 	expectedSHA256, err := findChecksumForAsset(info.HTMLURL, platformInfo.binaryName)
 	if err == nil && expectedSHA256 != "" {
@@ -202,17 +202,17 @@ func downloadUpdate(downloadURL string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to download: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	out, err := os.Create(tempFile)
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp file: %w", err)
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
-		os.Remove(tempFile)
+		_ = os.Remove(tempFile)
 		return "", fmt.Errorf("failed to save download: %w", err)
 	}
 
@@ -251,7 +251,7 @@ func installUpdate(tempFile string, platformInfo platformInfoStruct) error {
 		return fmt.Errorf("failed to install: %w", err)
 	}
 
-	os.RemoveAll(extractedDir)
+	_ = os.RemoveAll(extractedDir)
 	return nil
 }
 
@@ -259,7 +259,7 @@ func buildFromSource() error {
 	fmt.Println("🔨 Building from source...")
 
 	buildDir := "build"
-	os.MkdirAll(buildDir, 0755)
+	_ = os.MkdirAll(buildDir, 0755)
 
 	cmd := exec.Command("go", "build", "-o", "build/synkro", "./cmd/synkro/")
 	cmd.Stdout = os.Stdout
@@ -283,7 +283,7 @@ func buildFromSource() error {
 }
 
 func extractTarGz(source, dest string) error {
-	os.MkdirAll(dest, 0755)
+	_ = os.MkdirAll(dest, 0755)
 
 	if runtime.GOOS == "windows" {
 		return execCommand("tar", "-xzf", source, "-C", dest)
@@ -386,7 +386,7 @@ func fileSHA256(filePath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
@@ -403,7 +403,7 @@ func findChecksumForAsset(releaseURL, assetName string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("checksums file not found (status %d)", resp.StatusCode)

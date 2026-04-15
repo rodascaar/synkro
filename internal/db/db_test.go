@@ -13,7 +13,7 @@ func TestNew(t *testing.T) {
 	database, err := New(tmpFile)
 	require.NoError(t, err)
 	require.NotNil(t, database)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	db := database.DB()
 	require.NotNil(t, db)
@@ -41,14 +41,14 @@ func TestNew_DefaultPath(t *testing.T) {
 		return
 	}
 	require.NotNil(t, database)
-	database.Close()
+	_ = database.Close()
 }
 
 func TestNew_EmptyPath(t *testing.T) {
 	database, err := New("")
 	require.NoError(t, err)
 	require.NotNil(t, database)
-	database.Close()
+	_ = database.Close()
 }
 
 func TestNew_Subdirectory(t *testing.T) {
@@ -58,7 +58,7 @@ func TestNew_Subdirectory(t *testing.T) {
 	database, err := New(path)
 	require.NoError(t, err)
 	require.NotNil(t, database)
-	database.Close()
+	_ = database.Close()
 }
 
 func TestDB(t *testing.T) {
@@ -66,7 +66,7 @@ func TestDB(t *testing.T) {
 
 	database, err := New(tmpFile)
 	require.NoError(t, err)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	db := database.DB()
 	assert.NotNil(t, db)
@@ -103,7 +103,7 @@ func TestInitSchema_Idempotent(t *testing.T) {
 	err = database.initSchema()
 	assert.NoError(t, err)
 
-	database.Close()
+	_ = database.Close()
 }
 
 func TestInitSchema_TablesCreated(t *testing.T) {
@@ -111,7 +111,7 @@ func TestInitSchema_TablesCreated(t *testing.T) {
 
 	database, err := New(tmpFile)
 	require.NoError(t, err)
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	tables := []string{
 		"memories",

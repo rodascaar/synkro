@@ -17,7 +17,7 @@ func setupGraphTestDB(t *testing.T) (*db.Database, *memory.Repository, *Reposito
 	tmpFile := t.TempDir() + "/test.db"
 	database, err := db.New(tmpFile)
 	require.NoError(t, err)
-	t.Cleanup(func() { database.Close() })
+	t.Cleanup(func() { _ = database.Close() })
 
 	memRepo := memory.NewRepository(database.DB())
 	graphRepo := NewRepository(database.DB())
@@ -27,7 +27,7 @@ func setupGraphTestDB(t *testing.T) (*db.Database, *memory.Repository, *Reposito
 
 func insertMemory(t *testing.T, db *sql.DB, id string) {
 	t.Helper()
-	db.Exec(`INSERT OR IGNORE INTO memories (id, created_at, updated_at, type, title, content, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+	_, _ = db.Exec(`INSERT OR IGNORE INTO memories (id, created_at, updated_at, type, title, content, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		id, time.Now().Format(time.RFC3339), time.Now().Format(time.RFC3339), "note", "test", "test content", "active")
 }
 
@@ -69,7 +69,7 @@ func TestRepository_Get_BothDirections(t *testing.T) {
 		SourceID: "a", TargetID: "b", Type: "depends_on",
 		Strength: 0.5, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
-	graphRepo.Add(ctx, rel)
+	_ = graphRepo.Add(ctx, rel)
 
 	fromA, _ := graphRepo.Get(ctx, "a")
 	assert.Len(t, fromA, 1)
@@ -89,10 +89,10 @@ func TestRepository_Add_Upsert(t *testing.T) {
 		SourceID: "a", TargetID: "b", Type: "related_to",
 		Strength: 0.5, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
-	graphRepo.Add(ctx, rel)
+	_ = graphRepo.Add(ctx, rel)
 
 	rel.Strength = 0.9
-	graphRepo.Add(ctx, rel)
+	_ = graphRepo.Add(ctx, rel)
 
 	relations, _ := graphRepo.Get(ctx, "a")
 	assert.Equal(t, 0.9, relations[0].Strength)
@@ -109,7 +109,7 @@ func TestRepository_Delete(t *testing.T) {
 		SourceID: "a", TargetID: "b", Type: "related_to",
 		Strength: 0.5, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
-	graphRepo.Add(ctx, rel)
+	_ = graphRepo.Add(ctx, rel)
 
 	err := graphRepo.Delete(ctx, "a", "b")
 	require.NoError(t, err)
@@ -129,7 +129,7 @@ func TestRepository_UpdateStrength(t *testing.T) {
 		SourceID: "a", TargetID: "b", Type: "related_to",
 		Strength: 0.5, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
-	graphRepo.Add(ctx, rel)
+	_ = graphRepo.Add(ctx, rel)
 
 	rel.Strength = 1.0
 	err := graphRepo.UpdateStrength(ctx, rel)
@@ -147,11 +147,11 @@ func TestRepository_LoadAll(t *testing.T) {
 	insertMemory(t, database.DB(), "b")
 	insertMemory(t, database.DB(), "c")
 
-	graphRepo.Add(ctx, &memory.MemoryRelation{
+	_ = graphRepo.Add(ctx, &memory.MemoryRelation{
 		SourceID: "a", TargetID: "b", Type: "related_to",
 		Strength: 0.5, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	})
-	graphRepo.Add(ctx, &memory.MemoryRelation{
+	_ = graphRepo.Add(ctx, &memory.MemoryRelation{
 		SourceID: "b", TargetID: "c", Type: "depends_on",
 		Strength: 0.8, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	})
@@ -191,7 +191,7 @@ func TestGraph_FindPath_Direct(t *testing.T) {
 	insertMemory(t, database.DB(), "b")
 
 	g := NewGraph(memRepo, graphRepo)
-	g.AddRelation(ctx, &memory.MemoryRelation{
+	_ = g.AddRelation(ctx, &memory.MemoryRelation{
 		SourceID: "a", TargetID: "b", Type: "related_to",
 		Strength: 0.5, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	})
@@ -233,11 +233,11 @@ func TestGraph_GetStats(t *testing.T) {
 
 	g := NewGraph(memRepo, graphRepo)
 
-	g.AddRelation(ctx, &memory.MemoryRelation{
+	_ = g.AddRelation(ctx, &memory.MemoryRelation{
 		SourceID: "a", TargetID: "b", Type: "related_to",
 		Strength: 0.5, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	})
-	g.AddRelation(ctx, &memory.MemoryRelation{
+	_ = g.AddRelation(ctx, &memory.MemoryRelation{
 		SourceID: "b", TargetID: "c", Type: "related_to",
 		Strength: 0.5, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	})

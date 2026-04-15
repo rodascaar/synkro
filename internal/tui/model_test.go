@@ -18,7 +18,7 @@ func setupTestTUI(t *testing.T) (*memory.Repository, func()) {
 
 	repo := memory.NewRepository(d.DB())
 
-	cleanup := func() { d.Close() }
+	cleanup := func() { _ = d.Close() }
 	return repo, cleanup
 }
 
@@ -156,7 +156,7 @@ func TestModel_View(t *testing.T) {
 func TestModel_View_Empty(t *testing.T) {
 	d, err := db.New(":memory:")
 	require.NoError(t, err)
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 
 	repo := memory.NewRepository(d.DB())
 	model := tui.InitialModel(repo, nil)

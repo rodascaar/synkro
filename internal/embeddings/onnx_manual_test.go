@@ -35,7 +35,7 @@ func TestONNXInference(t *testing.T) {
 		t.Skipf("ONNX Runtime not available or model not downloaded: %v", err)
 		return
 	}
-	defer gen.Close()
+	defer func() { _ = gen.Close() }()
 
 	ctx := context.Background()
 
