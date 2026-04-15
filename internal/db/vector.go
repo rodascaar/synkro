@@ -4,16 +4,31 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	"github.com/rodascaar/synkro/internal/embeddings"
+	synkroerrors "github.com/rodascaar/synkro/internal/errors"
 )
 
+var vecAvailable bool
+
 func init() {
+	defer func() {
+		if r := recover(); r != nil {
+			vecAvailable = false
+			log.Printf("Warning: sqlite-vec not available, vector search will use in-memory fallback: %v", r)
+		}
+	}()
 	sqlite_vec.Auto()
+	vecAvailable = true
 }
 
 func InsertVector(ctx context.Context, db *sql.DB, memoryID string, embedding []float32) error {
+	if !vecAvailable {
+		return synkroerrors.ErrVecNotAvailable
+	}
+
 	vec, err := sqlite_vec.SerializeFloat32(embedding)
 	if err != nil {
 		return fmt.Errorf("failed to serialize embedding: %w", err)
@@ -28,11 +43,19 @@ func InsertVector(ctx context.Context, db *sql.DB, memoryID string, embedding []
 }
 
 func DeleteVector(ctx context.Context, db *sql.DB, memoryID string) error {
+	if !vecAvailable {
+		return synkroerrors.ErrVecNotAvailable
+	}
+
 	_, err := db.ExecContext(ctx, `DELETE FROM memory_vec WHERE memory_id = ?`, memoryID)
 	return err
 }
 
 func UpdateVector(ctx context.Context, exec Executor, memoryID string, embedding []float32) error {
+	if !vecAvailable {
+		return synkroerrors.ErrVecNotAvailable
+	}
+
 	vec, err := sqlite_vec.SerializeFloat32(embedding)
 	if err != nil {
 		return fmt.Errorf("failed to serialize embedding: %w", err)
@@ -52,6 +75,10 @@ type VectorSearchResult struct {
 }
 
 func SearchVectors(ctx context.Context, db *sql.DB, queryEmbedding []float32, k int) ([]*VectorSearchResult, error) {
+	if !vecAvailable {
+		return nil, synkroerrors.ErrVecNotAvailable
+	}
+
 	vec, err := sqlite_vec.SerializeFloat32(queryEmbedding)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize query embedding: %w", err)
@@ -82,6 +109,10 @@ func SearchVectors(ctx context.Context, db *sql.DB, queryEmbedding []float32, k 
 }
 
 func SearchVectorsWithMetadata(ctx context.Context, db *sql.DB, queryEmbedding []float32, k int) ([]*VectorSearchResult, error) {
+	if !vecAvailable {
+		return nil, synkroerrors.ErrVecNotAvailable
+	}
+
 	vec, err := sqlite_vec.SerializeFloat32(queryEmbedding)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize query embedding: %w", err)

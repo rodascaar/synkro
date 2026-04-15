@@ -107,6 +107,11 @@ var (
 		Message: "Vector search failed",
 		Help:    "Ensure embeddings are generated for your memories",
 	}
+	ErrVecNotAvailable = &SynkroError{
+		Code:    "VEC_NOT_AVAILABLE",
+		Message: "sqlite-vec extension not available",
+		Help:    "Vector search will use in-memory fallback. Install sqlite-vec for KNN search.",
+	}
 	ErrRelationNotFound = &SynkroError{
 		Code:    "RELATION_NOT_FOUND",
 		Message: "Relation not found",
