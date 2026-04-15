@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 
 	ort "github.com/yalue/onnxruntime_go"
@@ -160,7 +159,19 @@ func (g *ONNXEmbeddingGenerator) loadModel(ctx context.Context) error {
 		}
 	}
 	if g.tokenizer == nil {
-		return fmt.Errorf("failed to load tokenizer from %s", vocabPath)
+		log.Printf("Attempting to download vocabulary for %s...", modelInfo.Name)
+		if err := g.modelManager.DownloadVocabulary(context.Background(), modelInfo.Name); err != nil {
+			return fmt.Errorf("failed to download vocabulary: %w", err)
+		}
+		vocabPath, err = g.modelManager.GetVocabularyPath(modelInfo.Name)
+		if err != nil {
+			return fmt.Errorf("failed to get vocabulary path after download: %w", err)
+		}
+		tok, err := NewWordPieceTokenizer(vocabPath, modelInfo.MaxSeqLen)
+		if err != nil {
+			return fmt.Errorf("failed to load tokenizer after download: %w", err)
+		}
+		g.tokenizer = tok
 	}
 
 	log.Printf("Successfully loaded model: %s (dimension: %d, max_seq: %d)", modelInfo.Name, g.dimension, modelInfo.MaxSeqLen)
@@ -315,27 +326,6 @@ func (g *ONNXEmbeddingGenerator) ModelType() string {
 		return "onnx:" + g.modelInfo.Name
 	}
 	return "onnx"
-}
-
-func LoadVocabularyFromJSON(jsonPath string) (*Tokenizer, error) {
-	data, err := os.ReadFile(jsonPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read vocabulary file: %w", err)
-	}
-
-	tok := NewTokenizer()
-	vocab := make(map[string]int)
-
-	lines := strings.Split(string(data), "\n")
-	for idx, line := range lines {
-		token := strings.TrimSpace(line)
-		if token != "" {
-			vocab[token] = idx
-		}
-	}
-
-	tok.SetVocabulary(vocab)
-	return tok, nil
 }
 
 func DownloadVocabularyFromHuggingFace(modelName, downloadDir string) error {

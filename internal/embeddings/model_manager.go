@@ -292,6 +292,16 @@ func (mm *ModelManager) downloadVocab(ctx context.Context, model *ModelInfo, mod
 	return nil
 }
 
+func (mm *ModelManager) DownloadVocabulary(ctx context.Context, modelName string) error {
+	model, err := mm.GetModel(modelName)
+	if err != nil {
+		return err
+	}
+
+	modelDir := filepath.Join(mm.downloadDir, modelName)
+	return mm.downloadVocab(ctx, model, modelDir)
+}
+
 type progressWriter struct {
 	progress chan<- int64
 }
