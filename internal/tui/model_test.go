@@ -18,9 +18,16 @@ func setupTestTUI(t *testing.T) (*memory.Repository, func()) {
 
 	repo := memory.NewRepository(d.DB())
 
-	for i := 0; i < 3; i++ {
+	cleanup := func() { d.Close() }
+	return repo, cleanup
+}
+
+func createMemories(t *testing.T, repo *memory.Repository) {
+	t.Helper()
+	types := []string{"note", "decision", "task", "note"}
+	for i, typ := range types {
 		mem := &memory.Memory{
-			Type:    "note",
+			Type:    typ,
 			Title:   "Test Title " + string(rune('0'+i)),
 			Content: "Test Content " + string(rune('0'+i)),
 			Source:  "test",
@@ -29,8 +36,14 @@ func setupTestTUI(t *testing.T) (*memory.Repository, func()) {
 		require.NoError(t, repo.Create(context.Background(), mem))
 	}
 
-	cleanup := func() { d.Close() }
-	return repo, cleanup
+	archived := &memory.Memory{
+		Type:    "note",
+		Title:   "Archived Note",
+		Content: "Old content",
+		Source:  "test",
+		Status:  "archived",
+	}
+	require.NoError(t, repo.Create(context.Background(), archived))
 }
 
 func TestModel_Init(t *testing.T) {
@@ -43,28 +56,115 @@ func TestModel_Init(t *testing.T) {
 	assert.NotNil(t, cmd)
 }
 
-func TestModel_Update_Keys(t *testing.T) {
+func TestModel_Update_Navigation(t *testing.T) {
+	repo, cleanup := setupTestTUI(t)
+	defer cleanup()
+	createMemories(t, repo)
+
+	model := tui.InitialModel(repo, nil)
+	model.Init()
+
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	newModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	assert.NotNil(t, newModel)
+
+	newModel, _ = newModel.Update(tea.KeyMsg{Type: tea.KeyDown})
+	assert.NotNil(t, newModel)
+
+	newModel, _ = newModel.Update(tea.KeyMsg{Type: tea.KeyUp})
+	assert.NotNil(t, newModel)
+}
+
+func TestModel_Update_Filter(t *testing.T) {
+	repo, cleanup := setupTestTUI(t)
+	defer cleanup()
+	createMemories(t, repo)
+
+	model := tui.InitialModel(repo, nil)
+	model.Init()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	newModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	_ = newModel.View()
+
+	newModel, _ = newModel.Update(tea.KeyMsg{Type: tea.KeyTab})
+	_ = newModel.View()
+
+	newModel, _ = newModel.Update(tea.KeyMsg{Type: tea.KeyTab})
+	_ = newModel.View()
+
+	newModel, _ = newModel.Update(tea.KeyMsg{Type: tea.KeyTab})
+	_ = newModel.View()
+
+	newModel, _ = newModel.Update(tea.KeyMsg{Type: tea.KeyTab})
+	_ = newModel.View()
+
+	newModel, _ = newModel.Update(tea.KeyMsg{Type: tea.KeyTab})
+	_ = newModel.View()
+}
+
+func TestModel_Update_Search(t *testing.T) {
+	repo, cleanup := setupTestTUI(t)
+	defer cleanup()
+	createMemories(t, repo)
+
+	model := tui.InitialModel(repo, nil)
+	model.Init()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	newModel, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	assert.NotNil(t, cmd)
+
+	newModel, _ = newModel.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t', 'e', 's', 't'}})
+	assert.NotNil(t, newModel)
+
+	newModel, _ = newModel.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	assert.NotNil(t, newModel)
+}
+
+func TestModel_Update_Graph(t *testing.T) {
+	repo, cleanup := setupTestTUI(t)
+	defer cleanup()
+	createMemories(t, repo)
+
+	model := tui.InitialModel(repo, nil)
+	model.Init()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	newModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	_ = newModel.View()
+
+	newModel, _ = newModel.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	assert.NotNil(t, newModel)
+}
+
+func TestModel_View(t *testing.T) {
 	repo, cleanup := setupTestTUI(t)
 	defer cleanup()
 
 	model := tui.InitialModel(repo, nil)
 	model.Init()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
-	newModel, cmd := model.Update(tea.KeyMsg{Type: tea.KeyDown})
-	assert.NotNil(t, newModel)
-	assert.Nil(t, cmd)
+	view := model.View()
+	assert.Contains(t, view, "SYNKRO")
+	assert.Contains(t, view, "FILTERS")
+	assert.Contains(t, view, "SHORTCUTS")
+}
 
-	newModel, cmd = model.Update(tea.KeyMsg{Type: tea.KeyUp})
-	assert.NotNil(t, newModel)
-	assert.Nil(t, cmd)
+func TestModel_View_Empty(t *testing.T) {
+	d, err := db.New(":memory:")
+	require.NoError(t, err)
+	defer d.Close()
 
-	newModel, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
-	assert.NotNil(t, newModel)
-	assert.Nil(t, cmd)
+	repo := memory.NewRepository(d.DB())
+	model := tui.InitialModel(repo, nil)
+	model.Init()
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
-	newModel, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
-	assert.NotNil(t, newModel)
-	assert.NotNil(t, cmd)
+	view := model.View()
+	assert.Contains(t, view, "Press 'a' to add your first memory")
 }
 
 func TestAddModel_Update(t *testing.T) {
@@ -82,4 +182,7 @@ func TestAddModel_Update(t *testing.T) {
 	newModel, cmd := addModel.Update(tea.KeyMsg{Type: tea.KeyTab})
 	assert.NotNil(t, newModel)
 	assert.NotNil(t, cmd)
+
+	newModel, _ = newModel.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	assert.NotNil(t, newModel)
 }

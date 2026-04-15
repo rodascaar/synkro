@@ -63,10 +63,7 @@ func (st *SessionTracker) loadFromDB(ctx context.Context) {
 	}
 }
 
-func (st *SessionTracker) GetOrCreate(ctx context.Context, sessionID string) *Session {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-
+func (st *SessionTracker) getOrCreateLocked(sessionID string) *Session {
 	session, exists := st.sessions[sessionID]
 	if !exists {
 		now := time.Now()
@@ -77,10 +74,17 @@ func (st *SessionTracker) GetOrCreate(ctx context.Context, sessionID string) *Se
 			DeliveredMemories: make(map[string]*DeliveredMemory),
 		}
 		st.sessions[sessionID] = session
+	}
+	return session
+}
 
-		if st.repo != nil {
-			_ = st.repo.Save(context.Background(), session)
-		}
+func (st *SessionTracker) GetOrCreate(ctx context.Context, sessionID string) *Session {
+	st.mu.Lock()
+	session := st.getOrCreateLocked(sessionID)
+	st.mu.Unlock()
+
+	if st.repo != nil {
+		_ = st.repo.Save(context.Background(), session)
 	}
 
 	return session
@@ -88,31 +92,19 @@ func (st *SessionTracker) GetOrCreate(ctx context.Context, sessionID string) *Se
 
 func (st *SessionTracker) MarkAsDelivered(ctx context.Context, sessionID, memoryID string) {
 	st.mu.Lock()
-	defer st.mu.Unlock()
-
-	session, exists := st.sessions[sessionID]
-	if !exists {
-		now := time.Now()
-		session = &Session{
-			ID:                sessionID,
-			CreatedAt:         now,
-			UpdatedAt:         now,
-			DeliveredMemories: make(map[string]*DeliveredMemory),
-		}
-		st.sessions[sessionID] = session
-
-		if st.repo != nil {
-			_ = st.repo.Save(context.Background(), session)
-		}
-	}
-
+	_, existed := st.sessions[sessionID]
+	session := st.getOrCreateLocked(sessionID)
 	session.DeliveredMemories[memoryID] = &DeliveredMemory{
 		MemoryID:    memoryID,
 		DeliveredAt: time.Now(),
 	}
 	session.UpdatedAt = time.Now()
+	st.mu.Unlock()
 
 	if st.repo != nil {
+		if !existed {
+			_ = st.repo.Save(context.Background(), session)
+		}
 		_ = st.repo.MarkDelivered(ctx, sessionID, memoryID)
 	}
 }
@@ -139,27 +131,11 @@ func (st *SessionTracker) GetRecentDeliveries(ctx context.Context, sessionID str
 
 func (st *SessionTracker) UpdateLastQuery(ctx context.Context, sessionID, query string) {
 	st.mu.Lock()
-	defer st.mu.Unlock()
-
-	session, exists := st.sessions[sessionID]
-	if !exists {
-		now := time.Now()
-		session = &Session{
-			ID:                sessionID,
-			CreatedAt:         now,
-			UpdatedAt:         now,
-			DeliveredMemories: make(map[string]*DeliveredMemory),
-		}
-		st.sessions[sessionID] = session
-
-		if st.repo != nil {
-			_ = st.repo.Save(context.Background(), session)
-		}
-	}
-
+	session := st.getOrCreateLocked(sessionID)
 	session.LastQuery = query
 	session.LastQueryAt = time.Now()
 	session.UpdatedAt = time.Now()
+	st.mu.Unlock()
 
 	if st.repo != nil {
 		_ = st.repo.UpdateLastQuery(ctx, sessionID, query)
@@ -180,13 +156,17 @@ func (st *SessionTracker) IsDuplicateQuery(sessionID, query string) bool {
 
 func (st *SessionTracker) Persist(ctx context.Context) error {
 	st.mu.Lock()
-	defer st.mu.Unlock()
+	sessions := make([]*Session, 0, len(st.sessions))
+	for _, s := range st.sessions {
+		sessions = append(sessions, s)
+	}
+	st.mu.Unlock()
 
 	if st.repo == nil {
 		return nil
 	}
 
-	for _, session := range st.sessions {
+	for _, session := range sessions {
 		if err := st.repo.Save(ctx, session); err != nil {
 			return err
 		}

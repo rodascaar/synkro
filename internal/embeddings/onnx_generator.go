@@ -3,9 +3,13 @@ package embeddings
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 
 	ort "github.com/yalue/onnxruntime_go"
@@ -314,20 +318,61 @@ func (g *ONNXEmbeddingGenerator) ModelType() string {
 }
 
 func LoadVocabularyFromJSON(jsonPath string) (*Tokenizer, error) {
-	return NewTokenizer(), nil
-}
-
-func (g *ONNXEmbeddingGenerator) LoadTokenizer(vocabularyPath string) error {
-	tok, err := NewWordPieceTokenizer(vocabularyPath, g.modelInfo.MaxSeqLen)
+	data, err := os.ReadFile(jsonPath)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to read vocabulary file: %w", err)
 	}
-	g.mu.Lock()
-	g.tokenizer = tok
-	g.mu.Unlock()
-	return nil
+
+	tok := NewTokenizer()
+	vocab := make(map[string]int)
+
+	lines := strings.Split(string(data), "\n")
+	for idx, line := range lines {
+		token := strings.TrimSpace(line)
+		if token != "" {
+			vocab[token] = idx
+		}
+	}
+
+	tok.SetVocabulary(vocab)
+	return tok, nil
 }
 
 func DownloadVocabularyFromHuggingFace(modelName, downloadDir string) error {
+	modelDir := filepath.Join(downloadDir, modelName)
+	if err := os.MkdirAll(modelDir, 0755); err != nil {
+		return fmt.Errorf("failed to create model directory: %w", err)
+	}
+
+	vocabURL := fmt.Sprintf("https://huggingface.co/sentence-transformers/%s/resolve/main/vocab.txt", modelName)
+	vocabPath := filepath.Join(modelDir, "vocab.txt")
+
+	ctx := context.Background()
+	req, err := http.NewRequestWithContext(ctx, "GET", vocabURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to download vocabulary: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download vocabulary: HTTP %d", resp.StatusCode)
+	}
+
+	out, err := os.Create(vocabPath)
+	if err != nil {
+		return fmt.Errorf("failed to create vocab file: %w", err)
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, resp.Body); err != nil {
+		os.Remove(vocabPath)
+		return fmt.Errorf("failed to write vocab file: %w", err)
+	}
+
 	return nil
 }

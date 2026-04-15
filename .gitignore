@@ -1,15 +1,26 @@
 # Binaries
 synkro
 synkro-*
+*.test
+test_tui
 
 # Test databases
 *.db
 *.db-shm
 *.db-wal
 
+# Test artifacts
+test_mcp_config.json
+test-tui*.sh
+dist/package.sh
+
 # Test cache
 coverage.out
 coverage.html
+
+# Backup files
+*.bak
+*.bak.*
 
 # IDE
 .vscode
@@ -24,4 +35,5 @@ Thumbs.db
 
 # Build artifacts
 dist/
+build/
 models/

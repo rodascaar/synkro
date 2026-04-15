@@ -18,6 +18,7 @@ type Server struct {
 	sessionTracker *session.SessionTracker
 	contextPruner  *pruner.ContextPruner
 	server         *mcp.Server
+	serverVersion  string
 }
 
 func NewServer(repo *memory.Repository, g *graph.Graph, st *session.SessionTracker, cp *pruner.ContextPruner) *Server {
@@ -26,13 +27,18 @@ func NewServer(repo *memory.Repository, g *graph.Graph, st *session.SessionTrack
 		graph:          g,
 		sessionTracker: st,
 		contextPruner:  cp,
+		serverVersion:  "1.0",
 	}
+}
+
+func (s *Server) SetVersion(v string) {
+	s.serverVersion = v
 }
 
 func (s *Server) Run(ctx context.Context) error {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "synkro",
-		Version: "2.0.0",
+		Version: s.serverVersion,
 	}, nil)
 
 	s.server = server
@@ -304,7 +310,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}, s.handleFindPath)
 
 	log.SetOutput(os.Stderr)
-	log.Println("Synkro MCP Server v2.0.0 starting...")
+	log.Printf("Synkro MCP Server v%s starting...\n", s.serverVersion)
 
 	return server.Run(ctx, &mcp.StdioTransport{})
 }
@@ -358,7 +364,7 @@ type GetMemoryArgs struct {
 
 func (s *Server) handleGetMemory(ctx context.Context, req *mcp.CallToolRequest, args GetMemoryArgs) (*mcp.CallToolResult, any, error) {
 	input := GetMemoryInput{ID: args.ID}
-	buf := &bufferWriter{}
+	buf := &BufferWriter{}
 	if err := GetMemory(input, buf); err != nil {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
@@ -387,7 +393,7 @@ func (s *Server) handleListMemory(ctx context.Context, req *mcp.CallToolRequest,
 		Status: args.Status,
 		Limit:  args.Limit,
 	}
-	buf := &bufferWriter{}
+	buf := &BufferWriter{}
 	if err := ListMemory(input, buf); err != nil {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
@@ -428,7 +434,7 @@ func (s *Server) handleSearchMemory(ctx context.Context, req *mcp.CallToolReques
 		}, nil, nil
 	}
 
-	buf := &bufferWriter{}
+	buf := &BufferWriter{}
 	if err := SearchMemory(input, buf); err != nil {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
@@ -471,7 +477,7 @@ func (s *Server) handleUpdateMemory(ctx context.Context, req *mcp.CallToolReques
 		}, nil, nil
 	}
 
-	buf := &bufferWriter{}
+	buf := &BufferWriter{}
 	if err := UpdateMemory(input, buf); err != nil {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
@@ -504,7 +510,7 @@ func (s *Server) handleArchiveMemory(ctx context.Context, req *mcp.CallToolReque
 		}, nil, nil
 	}
 
-	buf := &bufferWriter{}
+	buf := &BufferWriter{}
 	if err := ArchiveMemory(input, buf); err != nil {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
@@ -545,7 +551,7 @@ func (s *Server) handleActivateContext(ctx context.Context, req *mcp.CallToolReq
 		}, nil, nil
 	}
 
-	buf := &bufferWriter{}
+	buf := &BufferWriter{}
 	if err := ActivateContext(input, buf); err != nil {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
@@ -562,17 +568,21 @@ func (s *Server) handleActivateContext(ctx context.Context, req *mcp.CallToolReq
 	}, nil, nil
 }
 
-type bufferWriter struct {
+type BufferWriter struct {
 	buf []byte
 }
 
-func (b *bufferWriter) Write(p []byte) (n int, err error) {
+func (b *BufferWriter) Write(p []byte) (n int, err error) {
 	b.buf = append(b.buf, p...)
 	return len(p), nil
 }
 
-func (b *bufferWriter) String() string {
+func (b *BufferWriter) String() string {
 	return string(b.buf)
+}
+
+func (b *BufferWriter) Reset() {
+	b.buf = nil
 }
 
 type AddRelationArgs struct {
@@ -590,7 +600,7 @@ func (s *Server) handleAddRelation(ctx context.Context, req *mcp.CallToolRequest
 		Strength: args.Strength,
 	}
 
-	buf := &bufferWriter{}
+	buf := &BufferWriter{}
 	if err := AddRelationHandler(input, buf); err != nil {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
@@ -614,7 +624,7 @@ type GetRelationsArgs struct {
 func (s *Server) handleGetRelations(ctx context.Context, req *mcp.CallToolRequest, args GetRelationsArgs) (*mcp.CallToolResult, any, error) {
 	input := GetRelationsInput{MemoryID: args.MemoryID}
 
-	buf := &bufferWriter{}
+	buf := &BufferWriter{}
 	if err := GetRelationsHandler(input, buf); err != nil {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
@@ -642,7 +652,7 @@ func (s *Server) handleDeleteRelation(ctx context.Context, req *mcp.CallToolRequ
 		TargetID: args.TargetID,
 	}
 
-	buf := &bufferWriter{}
+	buf := &BufferWriter{}
 	if err := DeleteRelationHandler(input, buf); err != nil {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
@@ -670,7 +680,7 @@ func (s *Server) handleFindPath(ctx context.Context, req *mcp.CallToolRequest, a
 		ToID:   args.ToID,
 	}
 
-	buf := &bufferWriter{}
+	buf := &BufferWriter{}
 	if err := FindPathHandler(input, buf); err != nil {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{

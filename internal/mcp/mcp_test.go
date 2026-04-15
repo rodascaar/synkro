@@ -16,7 +16,7 @@ func TestGetConfidenceLevel(t *testing.T) {
 }
 
 func TestBufferWriter(t *testing.T) {
-	b := &bufferWriter{}
+	b := &BufferWriter{}
 
 	n, err := b.Write([]byte("hello"))
 	assert.NoError(t, err)
@@ -30,7 +30,7 @@ func TestBufferWriter(t *testing.T) {
 }
 
 func TestBufferWriter_Empty(t *testing.T) {
-	b := &bufferWriter{}
+	b := &BufferWriter{}
 	assert.Equal(t, "", b.String())
 }
 
@@ -74,7 +74,7 @@ func TestAddRelationInput_Validation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			SetGraph(nil)
-			var buf bufferWriter
+			var buf BufferWriter
 			err := AddRelationHandler(tt.input, &buf)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -88,7 +88,7 @@ func TestAddRelationInput_Validation(t *testing.T) {
 
 func TestGetRelationsHandler_NoGraph(t *testing.T) {
 	SetGraph(nil)
-	var buf bufferWriter
+	var buf BufferWriter
 	err := GetRelationsHandler(GetRelationsInput{MemoryID: "test"}, &buf)
 	assert.Error(t, err)
 	assert.Contains(t, buf.String(), "graph not available")
@@ -96,7 +96,7 @@ func TestGetRelationsHandler_NoGraph(t *testing.T) {
 
 func TestGetRelationsHandler_NoMemoryID(t *testing.T) {
 	SetGraph(nil)
-	var buf bufferWriter
+	var buf BufferWriter
 	err := GetRelationsHandler(GetRelationsInput{}, &buf)
 	assert.Error(t, err)
 	assert.Contains(t, buf.String(), "graph not available")
@@ -104,7 +104,7 @@ func TestGetRelationsHandler_NoMemoryID(t *testing.T) {
 
 func TestDeleteRelationHandler_NoGraph(t *testing.T) {
 	SetGraph(nil)
-	var buf bufferWriter
+	var buf BufferWriter
 	err := DeleteRelationHandler(DeleteRelationInput{SourceID: "a", TargetID: "b"}, &buf)
 	assert.Error(t, err)
 	assert.Contains(t, buf.String(), "graph not available")
@@ -112,7 +112,7 @@ func TestDeleteRelationHandler_NoGraph(t *testing.T) {
 
 func TestFindPathHandler_NoGraph(t *testing.T) {
 	SetGraph(nil)
-	var buf bufferWriter
+	var buf BufferWriter
 	err := FindPathHandler(FindPathInput{FromID: "a", ToID: "b"}, &buf)
 	assert.Error(t, err)
 	assert.Contains(t, buf.String(), "graph not available")

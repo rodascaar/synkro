@@ -84,31 +84,34 @@ func (g *Graph) FindPath(ctx context.Context, fromID, toID string) ([]string, er
 		return []string{fromID}, nil
 	}
 
+	parent := make(map[string]string)
 	visited := make(map[string]bool)
-	path := []string{}
 	queue := []string{fromID}
+	visited[fromID] = true
 
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
 
-		if current == toID {
-			path = append(path, current)
-			return path, nil
-		}
-
-		if visited[current] {
-			continue
-		}
-		visited[current] = true
-		path = append(path, current)
-
 		relations, _ := g.GetRelations(ctx, current)
 		for _, rel := range relations {
 			next := rel.TargetID
-			if !visited[next] {
-				queue = append(queue, next)
+			if visited[next] {
+				continue
 			}
+			visited[next] = true
+			parent[next] = current
+
+			if next == toID {
+				path := []string{next}
+				for node := current; node != fromID; node = parent[node] {
+					path = append([]string{node}, path...)
+				}
+				path = append([]string{fromID}, path...)
+				return path, nil
+			}
+
+			queue = append(queue, next)
 		}
 	}
 

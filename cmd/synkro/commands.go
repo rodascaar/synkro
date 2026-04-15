@@ -463,6 +463,7 @@ var mcpCmd = &cobra.Command{
 		cp := pruner.NewContextPruner()
 
 		mcpServer := mcpserver.NewServer(repo, g, st, cp)
+		mcpServer.SetVersion(Version)
 		if err := mcpServer.Run(context.Background()); err != nil {
 			fmt.Fprintf(os.Stderr, "MCP server error: %v\n", err)
 			os.Exit(1)

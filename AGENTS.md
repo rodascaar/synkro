@@ -14,11 +14,18 @@ go build -o synkro ./cmd/synkro/
 ./synkro list --limit 10
 ./synkro search "query"
 
-# Model management (NEW)
+# Model management
 ./synkro model list                  # List available embedding models
 ./synkro model info all-MiniLM-L6-v2 # Get model details
 ./synkro model download all-MiniLM-L6-v2    # Download specific model
 ./synkro model delete all-MiniLM-L6-v2 # Delete downloaded model
+
+# Additional commands
+./synkro health         # Check Synkro installation health
+./synkro update         # Update Synkro to latest version
+./synkro check-update   # Check for updates silently
+./synkro version        # Show Synkro version
+./synkro examples       # Load example memories to get started
 
 # Run TUI
 ./synkro tui
@@ -27,23 +34,24 @@ go build -o synkro ./cmd/synkro/
 ./synkro mcp
 
 # Full test suite
-make ci
+make test
 ```
 
 ## Project Structure
 
 ```
-cmd/synkro/          # CLI entrypoint (main.go, commands.go)
+cmd/synkro/          # CLI entrypoint (main.go, commands.go, update.go)
 internal/            # All internal packages
-  ├── config/       # Environment configuration (SYNKRO_DB_PATH, etc.)
+  ├── config/       # Environment configuration (SYNKRO_DB_PATH, etc.) + persistent config
   ├── db/          # SQLite with FTS5 virtual tables + WAL mode + FK
+  ├── errors/      # Synkro error types and display helpers
   ├── memory/      # Memory models and repository (MATCH queries, BM25)
-  ├── embeddings/  # TF-IDF + N-gram embeddings (384 dims) with persistent cache
+  ├── embeddings/  # TF-IDF + ONNX embeddings (384 dims) with WordPiece tokenizer + persistent cache
   ├── graph/       # Memory relationship graph (BFS) with repository
-  ├── mcp/         # MCP Server using Go SDK official
+  ├── mcp/         # MCP Server using Go SDK official (11 tools)
   ├── pruner/      # Context pruning logic
   ├── session/     # Session tracking (in-memory + SQLite persistent)
-  └── tui/         # Bubble Tea TUI (3 panels + Add Memory form)
+  └── tui/         # Bubble Tea TUI (3 panels + Add Memory form + sidebar filters)
 memory.db           # SQLite database (created by init)
 ```
 
@@ -104,6 +112,9 @@ SYNKRO_EMBEDDING_DIM=384           # Embedding dimension (default: 384)
 SYNKRO_MODEL_TYPE=tfidf             # Model type (default: tfidf) or onnx
 SYNKRO_MODEL_DIR=models             # Model download directory (default: models)
 SYNKRO_PREFERRED_MODEL=all-MiniLM-L6-v2  # Default ONNX model to use
+SYNKRO_AUTO_UPDATE=true            # Enable auto-update check (default: true)
+SYNKRO_CHECK_UPDATE_ON_START=true  # Check updates on startup (default: true)
+SYNKRO_LAST_UPDATE_CHECK=0         # Timestamp of last update check (default: 0)
 ```
 
 ## Verification & Testing
@@ -122,6 +133,7 @@ go build -o synkro ./cmd/synkro/
 ./synkro tui
 # Navigate: ↑/↓ or j/k
 # Search: /
+# Filter: Tab (cycle through All/Decisions/Tasks/Notes/Archive)
 # Toggle graph: g
 # Add memory: a
 # Quit: Ctrl+C
@@ -144,12 +156,16 @@ make lint
 
 Available tools:
 - `add_memory` - Add new memory
-- `get_memory` - Get memory by ID
+- `get_memory` - Get memory by ID (includes relations)
 - `list_memories` - List memories with filters
 - `search_memories` - FTS5 full-text search
 - `update_memory` - Update existing memory
 - `archive_memory` - Archive memory (mark as archived)
 - `activate_context` - Activate context with pruning and deduplication
+- `add_relation` - Add relation between two memories (6 types)
+- `get_relations` - Get all relations for a memory
+- `delete_relation` - Delete a relation between two memories
+- `find_path` - Find path between two memories using BFS
 
 Configuration for clients:
 ```json
@@ -185,6 +201,7 @@ Controls:
 - `github.com/mattn/go-sqlite3` - SQLite driver (CGO)
 - `github.com/google/uuid` - UUID generation
 - `github.com/modelcontextprotocol/go-sdk` - MCP Go SDK official
+- `github.com/yalue/onnxruntime_go` - ONNX Runtime Go bindings
 - `github.com/stretchr/testify` - Testing framework
 
 ## When Working On This Codebase

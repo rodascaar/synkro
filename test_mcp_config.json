@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "synkro": {
-      "command": "/Users/home/Downloads/nichogram/synkro/synkro",
-      "args": ["mcp"]
-    }
-  }
-}

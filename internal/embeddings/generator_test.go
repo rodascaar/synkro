@@ -2,6 +2,8 @@ package embeddings_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/rodascaar/synkro/internal/embeddings"
@@ -62,4 +64,47 @@ func TestSerializeDeserializeEmbedding(t *testing.T) {
 	deserialized := embeddings.DeserializeEmbedding(serialized)
 	assert.NotNil(t, deserialized)
 	assert.Equal(t, vec, deserialized)
+}
+
+func TestLoadVocabularyFromJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	vocabPath := filepath.Join(tmpDir, "vocab.txt")
+
+	content := "[PAD]\n[UNK]\n[CLS]\n[SEP]\nthe\ncat\nsat\non\nmat\n"
+	err := os.WriteFile(vocabPath, []byte(content), 0644)
+	require.NoError(t, err)
+
+	tok, err := embeddings.LoadVocabularyFromJSON(vocabPath)
+	require.NoError(t, err)
+	require.NotNil(t, tok)
+
+	assert.Equal(t, 10, tok.GetVocabSize())
+
+	idx, ok := tok.GetTokenIndex("the")
+	assert.True(t, ok)
+	assert.Equal(t, 4, idx)
+
+	idx, ok = tok.GetTokenIndex("[CLS]")
+	assert.True(t, ok)
+	assert.Equal(t, 2, idx)
+
+	_, ok = tok.GetTokenIndex("nonexistent")
+	assert.False(t, ok)
+}
+
+func TestLoadVocabularyFromJSON_FileNotFound(t *testing.T) {
+	_, err := embeddings.LoadVocabularyFromJSON("/nonexistent/vocab.txt")
+	assert.Error(t, err)
+}
+
+func TestLoadVocabularyFromJSON_EmptyFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	vocabPath := filepath.Join(tmpDir, "vocab.txt")
+
+	err := os.WriteFile(vocabPath, []byte(""), 0644)
+	require.NoError(t, err)
+
+	tok, err := embeddings.LoadVocabularyFromJSON(vocabPath)
+	require.NoError(t, err)
+	assert.Equal(t, 0, tok.GetVocabSize())
 }

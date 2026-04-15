@@ -138,6 +138,7 @@ var healthCmd = &cobra.Command{
 			}
 
 			mcpServer := mcpserver.NewServer(repo, g, st, cp)
+			mcpServer.SetVersion(Version)
 			if mcpServer != nil {
 				fmt.Println("  ✅ MCP server can be started")
 			} else {
