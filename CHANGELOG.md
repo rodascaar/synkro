@@ -5,54 +5,67 @@ All notable changes to Synkro will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.0] - 2025-04-15
 
-### Added
-- MCP Server completo usando Go SDK oficial
-- FTS5 full-text search con BM25 scoring
-- Persistencia de session tracking en SQLite
-- Persistencia de embedding cache en SQLite
-- Persistencia de grafo de relaciones en SQLite
-- TUI Add Memory form (tecla 'a')
-- Suite completa de tests (>90% cobertura)
-- Linting con golangci-lint
-- CI/CD con GitHub Actions
-- Variables de entorno para configuración (SYNKRO_DB_PATH, SYNKRO_DEBUG, etc.)
-- Hybrid search combinando FTS5 y embeddings vectoriales
-- Búsqueda semántica con cosine similarity
+### Architecture (20 improvements across 4 phases)
 
-### Changed
-- Actualizado a Go 1.25 para MCP SDK
-- Refactorizado EmbeddingGenerator para soportar contexto
-- Refactorizado SessionTracker con persistencia dual
-- Mejorado performance de búsqueda con FTS5 MATCH queries
-- Reestructurado Grafo con repository persistente
+#### Foundation
+- Config JSON with auto-migration from KEY=VALUE format and env var overrides
+- sqlite-vec KNN search with `vec0` virtual tables (Linux/macOS)
+- Embedding regeneration on memory update when title/content changes
+- Tags normalization to `memory_tags` junction table
+- Versioned migration system with 3 initial migrations
 
-### Fixed
-- Variables de entorno no funcionaban (ahora correctamente implementadas)
-- Session tracking se perdía al reiniciar (ahora persistido)
-- Embedding cache se perdía al reiniciar (ahora persistido)
-- Relaciones no se persistían (ahora guardadas en SQLite)
+#### Brain & Stability
+- Bidirectional BFS graph pathfinding
+- `internal/errors` package integrated across MCP handlers
+- Health check with `go/version` stdlib comparison
+- FTS5 query sanitization (special characters escaping)
+- Real LRU cache with `container/list` and proper eviction
 
-### Technical
-- Agregado modelo de datos MemoryRelation para grafo
-- Implementado trigger automático para FTS5
-- Agregado soporte para embeddings TF-IDF en 384 dimensiones
-- Implementado cache LRU con límite configurable
-- Agregado tracking de duplicados por sesión
+#### Delivery
+- MCP handlers moved to Server methods (no global state)
+- TUI search using HybridSearch with substring fallback
+- SHA256 checksum verification on auto-update
 
-## [2.0.0] - 2026-04-13
+#### Refinement
+- Session tracker deterministic ordering (sorted by `DeliveredAt`)
+- Clean semver parsing (`parseSemver` + `compareVersions`)
+- ONNX mean pooling with attention mask
+- CLI `delete` command with memory verification
+- Configurable model download timeout
 
-### Added
-- TUI profesional con Bubble Tea
-- Soporte para MCP Server
-- Búsqueda semántica con embeddings
-- Grafo de relaciones entre memorias
-- Session tracking para evitar repeticiones
-- Context pruning inteligente
-- Soporte para múltiples tipos de memoria (note, decision, task, context)
+### Testing
+- `sanitize_test.go` — 10 test cases for FTS5 query sanitization
+- `cache_test.go` — 9 test cases for LRU cache (eviction, persistence, ordering)
+- `vector_test.go` — sqlite-vec graceful degradation tests
+- `session_test.go` — deterministic delivery ordering tests
+- `e2e_test.go` — end-to-end CRUD + search + tags flow
+- `update_test.go` — semver comparison tests
 
-### Changed
-- Migrado de CSV a SQLite con FTS5
-- Mejorada performance de búsqueda
-- Mejorada usabilidad con TUI
+### Documentation
+- Fixed Go version badge (1.22+ → 1.24+)
+- Added `delete` command to all docs
+- Fixed dead links and incorrect command references
+- Updated architecture docs with new files
+
+### CI/CD
+- Migrated `.golangci.yml` to v2 schema
+- Build constraints for sqlite-vec (`//go:build !windows`)
+- Graceful degradation on Windows (cosine similarity fallback)
+- Added macOS dependencies step
+
+### Cleanup
+- Removed `.bak` files, test binaries, stale scripts
+
+## [1.0.0] - Initial Release
+
+- MCP Server with 11 tools using Go SDK official
+- FTS5 full-text search with BM25 scoring
+- TF-IDF embeddings (384 dims) with persistent cache
+- Memory graph with 6 relation types
+- Bubble Tea TUI with 3 panels
+- ONNX model support
+- Session tracking (in-memory + SQLite persistent)
+- Context pruning and deduplication
+- Auto-update mechanism

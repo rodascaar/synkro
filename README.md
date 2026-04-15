@@ -62,6 +62,19 @@ irm https://raw.githubusercontent.com/rodascaar/synkro/main/install.ps1 | iex
 - ✅ **Testing completo** - Suite de tests con >90% cobertura
 - 🔧 **Variables de entorno** - Configuración flexible
 - 🚀 **CI/CD** - GitHub Actions con lint y tests
+- 🎯 **sqlite-vec KNN** - Búsqueda vectorial real (Linux/macOS)
+
+## ⚠️ Limitaciones de Plataforma
+
+| Plataforma | KNN Vectorial | Nota |
+|------------|---------------|------|
+| Linux | ✅ sqlite-vec | Requiere `libsqlite3-dev` |
+| macOS | ✅ sqlite-vec | Usa Xcode CLT SQLite |
+| Windows | ❌ cosine similarity | mingw no incluye `sqlite3.h` necesario para sqlite-vec |
+
+En Windows la búsqueda vectorial usa cosine similarity in-memory como fallback. Es funcional pero más lento con datasets grandes.
+
+Los modelos ONNX (opcionales) requieren instalar [ONNX Runtime](https://onnxruntime.ai/) manualmente. El generador TF-IDF funciona sin dependencias adicionales.
 
 ## 🎯 TUI Professional
 
