@@ -155,6 +155,41 @@ var searchCmd = &cobra.Command{
 	},
 }
 
+var deleteCmd = &cobra.Command{
+	Use:   "delete",
+	Short: "Delete a memory by ID",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		id := args[0]
+
+		d, err := db.New(cfg.DatabasePath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
+			os.Exit(1)
+		}
+		defer d.Close()
+
+		repo := memory.NewRepository(d.DB())
+
+		mem, err := repo.Get(context.Background(), id)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		if mem == nil {
+			fmt.Fprintf(os.Stderr, "Error: memory %s not found\n", id)
+			os.Exit(1)
+		}
+
+		if err := repo.Delete(context.Background(), id); err != nil {
+			fmt.Fprintf(os.Stderr, "Error deleting memory: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Memory deleted: %s (%s)\n", id, mem.Title)
+	},
+}
+
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initialize database",
@@ -388,6 +423,7 @@ func init() {
 	listCmd.Flags().Int("limit", 20, "Maximum number of results")
 
 	rootCmd.AddCommand(searchCmd)
+	rootCmd.AddCommand(deleteCmd)
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().Bool("with-models", false, "Enable embedding models")
 	rootCmd.AddCommand(tuiCmd)

@@ -8,10 +8,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/rodascaar/synkro/internal/graph"
+	synkroerrors "github.com/rodascaar/synkro/internal/errors"
 	"github.com/rodascaar/synkro/internal/memory"
-	"github.com/rodascaar/synkro/internal/pruner"
-	"github.com/rodascaar/synkro/internal/session"
 )
 
 type AddMemoryInput struct {
@@ -58,39 +56,45 @@ type ActivateContextInput struct {
 	Limit     int    `json:"limit"`
 }
 
-var (
-	globalRepo           *memory.Repository
-	globalGraph          *graph.Graph
-	globalSessionTracker *session.SessionTracker
-	globalContextPruner  *pruner.ContextPruner
-)
-
-func SetGlobalRepo(repo *memory.Repository) {
-	globalRepo = repo
+type AddRelationInput struct {
+	SourceID string  `json:"source_id"`
+	TargetID string  `json:"target_id"`
+	Type     string  `json:"type"`
+	Strength float64 `json:"strength"`
 }
 
-func SetGraph(g *graph.Graph) {
-	globalGraph = g
+type GetRelationsInput struct {
+	MemoryID string `json:"memory_id"`
 }
 
-func SetSessionTracker(tracker *session.SessionTracker) {
-	globalSessionTracker = tracker
+type DeleteRelationInput struct {
+	SourceID string `json:"source_id"`
+	TargetID string `json:"target_id"`
 }
 
-func SetContextPruner(pruner *pruner.ContextPruner) {
-	globalContextPruner = pruner
+type FindPathInput struct {
+	FromID string `json:"from_id"`
+	ToID   string `json:"to_id"`
 }
 
-func AddMemory(input AddMemoryInput) ([]byte, error) {
+func (s *Server) AddMemory(ctx context.Context, input AddMemoryInput) ([]byte, error) {
 	var buf bytes.Buffer
-	if err := AddMemoryWithWriter(input, &buf); err != nil {
+	if err := s.AddMemoryWithWriter(ctx, input, &buf); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
 }
 
-func AddMemoryWithWriter(input AddMemoryInput, w io.Writer) error {
-	ctx := context.Background()
+func (s *Server) AddMemoryWithWriter(ctx context.Context, input AddMemoryInput, w io.Writer) error {
+	if input.Title == "" {
+		return synkroerrors.Wrap(
+			fmt.Errorf("title is required"),
+			synkroerrors.ErrInvalidInput.Code,
+			synkroerrors.ErrInvalidInput.Message,
+			synkroerrors.ErrInvalidInput.Help,
+		)
+	}
+
 	mem := &memory.Memory{
 		Type:    input.Type,
 		Title:   input.Title,
@@ -100,9 +104,8 @@ func AddMemoryWithWriter(input AddMemoryInput, w io.Writer) error {
 		Tags:    input.Tags,
 	}
 
-	if err := globalRepo.Create(ctx, mem); err != nil {
-		fmt.Fprintf(w, "Error creating memory: %v\n", err)
-		return err
+	if err := s.repo.Create(ctx, mem); err != nil {
+		return synkroerrors.Wrap(err, synkroerrors.ErrEmbeddingFailed.Code, "Error creating memory", synkroerrors.ErrEmbeddingFailed.Help)
 	}
 
 	response := map[string]interface{}{
@@ -114,25 +117,30 @@ func AddMemoryWithWriter(input AddMemoryInput, w io.Writer) error {
 
 	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
 	fmt.Fprintf(w, "%s\n", jsonResponse)
-
 	return nil
 }
 
-func GetMemory(input GetMemoryInput, w io.Writer) error {
-	ctx := context.Background()
-	mem, err := globalRepo.Get(ctx, input.ID)
+func (s *Server) GetMemory(ctx context.Context, input GetMemoryInput, w io.Writer) error {
+	if input.ID == "" {
+		return synkroerrors.Wrap(
+			fmt.Errorf("id is required"),
+			synkroerrors.ErrInvalidInput.Code,
+			synkroerrors.ErrInvalidInput.Message,
+			synkroerrors.ErrInvalidInput.Help,
+		)
+	}
+
+	mem, err := s.repo.Get(ctx, input.ID)
 	if err != nil {
-		fmt.Fprintf(w, "Error getting memory: %v\n", err)
-		return err
+		return synkroerrors.Wrap(err, "DB_ERROR", "Error getting memory", "Check the memory ID and try again")
 	}
 	if mem == nil {
-		fmt.Fprintf(w, "Memory not found: %s\n", input.ID)
-		return nil
+		return synkroerrors.ErrMemoryNotFound
 	}
 
 	var relations []interface{}
-	if globalGraph != nil {
-		rels, err := globalGraph.GetRelations(ctx, mem.ID)
+	if s.graph != nil {
+		rels, err := s.graph.GetRelations(ctx, mem.ID)
 		if err == nil {
 			for _, rel := range rels {
 				relations = append(relations, map[string]interface{}{
@@ -163,22 +171,19 @@ func GetMemory(input GetMemoryInput, w io.Writer) error {
 
 	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
 	fmt.Fprintf(w, "%s\n", jsonResponse)
-
 	return nil
 }
 
-func ListMemory(input ListMemoryInput, w io.Writer) error {
-	ctx := context.Background()
+func (s *Server) ListMemory(ctx context.Context, input ListMemoryInput, w io.Writer) error {
 	filter := memory.MemoryFilter{
 		Type:   input.Type,
 		Status: input.Status,
 		Limit:  input.Limit,
 	}
 
-	memories, err := globalRepo.Search(ctx, "", filter)
+	memories, err := s.repo.Search(ctx, "", filter)
 	if err != nil {
-		fmt.Fprintf(w, "Error listing memories: %v\n", err)
-		return err
+		return synkroerrors.Wrap(err, "DB_ERROR", "Error listing memories", "Check your database and filters")
 	}
 
 	response := map[string]interface{}{
@@ -189,22 +194,28 @@ func ListMemory(input ListMemoryInput, w io.Writer) error {
 
 	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
 	fmt.Fprintf(w, "%s\n", jsonResponse)
-
 	return nil
 }
 
-func SearchMemory(input SearchMemoryInput, w io.Writer) error {
-	ctx := context.Background()
+func (s *Server) SearchMemory(ctx context.Context, input SearchMemoryInput, w io.Writer) error {
+	if input.Query == "" {
+		return synkroerrors.Wrap(
+			fmt.Errorf("query is required"),
+			synkroerrors.ErrInvalidInput.Code,
+			synkroerrors.ErrInvalidInput.Message,
+			synkroerrors.ErrInvalidInput.Help,
+		)
+	}
+
 	filter := memory.MemoryFilter{
 		Type:   input.Type,
 		Status: input.Status,
 		Limit:  input.Limit,
 	}
 
-	memories, err := globalRepo.Search(ctx, input.Query, filter)
+	memories, err := s.repo.Search(ctx, input.Query, filter)
 	if err != nil {
-		fmt.Fprintf(w, "Error searching memories: %v\n", err)
-		return err
+		return synkroerrors.Wrap(err, synkroerrors.ErrFTS5Query.Code, "Error searching memories", synkroerrors.ErrFTS5Query.Help)
 	}
 
 	response := map[string]interface{}{
@@ -216,12 +227,19 @@ func SearchMemory(input SearchMemoryInput, w io.Writer) error {
 
 	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
 	fmt.Fprintf(w, "%s\n", jsonResponse)
-
 	return nil
 }
 
-func UpdateMemory(input UpdateMemoryInput, w io.Writer) error {
-	ctx := context.Background()
+func (s *Server) UpdateMemory(ctx context.Context, input UpdateMemoryInput, w io.Writer) error {
+	if input.ID == "" {
+		return synkroerrors.Wrap(
+			fmt.Errorf("id is required"),
+			synkroerrors.ErrInvalidInput.Code,
+			synkroerrors.ErrInvalidInput.Message,
+			synkroerrors.ErrInvalidInput.Help,
+		)
+	}
+
 	update := &memory.MemoryUpdate{}
 
 	if input.Title != "" {
@@ -237,9 +255,8 @@ func UpdateMemory(input UpdateMemoryInput, w io.Writer) error {
 		update.Tags = input.Tags
 	}
 
-	if err := globalRepo.Update(ctx, input.ID, update); err != nil {
-		fmt.Fprintf(w, "Error updating memory: %v\n", err)
-		return err
+	if err := s.repo.Update(ctx, input.ID, update); err != nil {
+		return synkroerrors.Wrap(err, "DB_ERROR", "Error updating memory", "Check the memory ID and try again")
 	}
 
 	response := map[string]interface{}{
@@ -250,19 +267,25 @@ func UpdateMemory(input UpdateMemoryInput, w io.Writer) error {
 
 	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
 	fmt.Fprintf(w, "%s\n", jsonResponse)
-
 	return nil
 }
 
-func ArchiveMemory(input ArchiveMemoryInput, w io.Writer) error {
-	ctx := context.Background()
+func (s *Server) ArchiveMemory(ctx context.Context, input ArchiveMemoryInput, w io.Writer) error {
+	if input.ID == "" {
+		return synkroerrors.Wrap(
+			fmt.Errorf("id is required"),
+			synkroerrors.ErrInvalidInput.Code,
+			synkroerrors.ErrInvalidInput.Message,
+			synkroerrors.ErrInvalidInput.Help,
+		)
+	}
+
 	update := &memory.MemoryUpdate{
 		Status: func() *string { s := "archived"; return &s }(),
 	}
 
-	if err := globalRepo.Update(ctx, input.ID, update); err != nil {
-		fmt.Fprintf(w, "Error archiving memory: %v\n", err)
-		return err
+	if err := s.repo.Update(ctx, input.ID, update); err != nil {
+		return synkroerrors.Wrap(err, "DB_ERROR", "Error archiving memory", "Check the memory ID and try again")
 	}
 
 	response := map[string]interface{}{
@@ -273,12 +296,18 @@ func ArchiveMemory(input ArchiveMemoryInput, w io.Writer) error {
 
 	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
 	fmt.Fprintf(w, "%s\n", jsonResponse)
-
 	return nil
 }
 
-func ActivateContext(input ActivateContextInput, w io.Writer) error {
-	ctx := context.Background()
+func (s *Server) ActivateContext(ctx context.Context, input ActivateContextInput, w io.Writer) error {
+	if input.Query == "" {
+		return synkroerrors.Wrap(
+			fmt.Errorf("query is required"),
+			synkroerrors.ErrInvalidInput.Code,
+			synkroerrors.ErrInvalidInput.Message,
+			synkroerrors.ErrInvalidInput.Help,
+		)
+	}
 
 	if input.MaxTokens <= 0 {
 		input.MaxTokens = 4000
@@ -291,8 +320,8 @@ func ActivateContext(input ActivateContextInput, w io.Writer) error {
 	}
 
 	duplicateDetected := false
-	if globalSessionTracker != nil {
-		if globalSessionTracker.IsDuplicateQuery(input.SessionID, input.Query) {
+	if s.sessionTracker != nil {
+		if s.sessionTracker.IsDuplicateQuery(input.SessionID, input.Query) {
 			duplicateDetected = true
 		}
 	}
@@ -302,10 +331,9 @@ func ActivateContext(input ActivateContextInput, w io.Writer) error {
 		Status: "active",
 	}
 
-	results, err := globalRepo.HybridSearch(ctx, input.Query, input.Limit, filter)
+	results, err := s.repo.HybridSearch(ctx, input.Query, input.Limit, filter)
 	if err != nil {
-		fmt.Fprintf(w, "Error searching memories: %v\n", err)
-		return err
+		return synkroerrors.Wrap(err, synkroerrors.ErrVecSearch.Code, "Error searching memories", synkroerrors.ErrVecSearch.Help)
 	}
 
 	if len(results) == 0 {
@@ -346,8 +374,8 @@ func ActivateContext(input ActivateContextInput, w io.Writer) error {
 	var prioritized []*memory.HybridSearchResult
 	var lowPriority []*memory.HybridSearchResult
 
-	if globalSessionTracker != nil {
-		recentDeliveries := globalSessionTracker.GetRecentDeliveries(ctx, input.SessionID, 20)
+	if s.sessionTracker != nil {
+		recentDeliveries := s.sessionTracker.GetRecentDeliveries(ctx, input.SessionID, 20)
 
 		for _, result := range results {
 			isRecent := false
@@ -368,9 +396,9 @@ func ActivateContext(input ActivateContextInput, w io.Writer) error {
 		prioritized = results
 	}
 
-	if globalContextPruner != nil {
-		prioritized = globalContextPruner.Prune(prioritized, input.Query)
-		lowPriority = globalContextPruner.Prune(lowPriority, input.Query)
+	if s.contextPruner != nil {
+		prioritized = s.contextPruner.Prune(prioritized, input.Query)
+		lowPriority = s.contextPruner.Prune(lowPriority, input.Query)
 	}
 
 	response := ActivateContextResponse{
@@ -383,20 +411,192 @@ func ActivateContext(input ActivateContextInput, w io.Writer) error {
 		LowPriorityResults: convertToContextItems(lowPriority, true),
 	}
 
-	if globalSessionTracker != nil {
+	if s.sessionTracker != nil {
 		for _, result := range prioritized {
-			globalSessionTracker.MarkAsDelivered(ctx, input.SessionID, result.Memory.ID)
+			s.sessionTracker.MarkAsDelivered(ctx, input.SessionID, result.Memory.ID)
 		}
-		globalSessionTracker.UpdateLastQuery(ctx, input.SessionID, input.Query)
+		s.sessionTracker.UpdateLastQuery(ctx, input.SessionID, input.Query)
 	}
 
 	jsonResponse, err := json.MarshalIndent(response, "", "  ")
 	if err != nil {
-		fmt.Fprintf(w, "Error marshaling response: %v\n", err)
-		return err
+		return synkroerrors.Wrap(err, "MARSHAL_ERROR", "Error marshaling response", "Please report this issue")
 	}
 	fmt.Fprintf(w, "%s\n", jsonResponse)
+	return nil
+}
 
+func (s *Server) AddRelation(ctx context.Context, input AddRelationInput, w io.Writer) error {
+	if input.SourceID == "" || input.TargetID == "" {
+		return synkroerrors.Wrap(
+			fmt.Errorf("source_id and target_id are required"),
+			synkroerrors.ErrInvalidInput.Code,
+			synkroerrors.ErrInvalidInput.Message,
+			synkroerrors.ErrInvalidInput.Help,
+		)
+	}
+
+	if s.graph == nil {
+		return synkroerrors.Wrap(
+			fmt.Errorf("graph not available"),
+			"GRAPH_NOT_AVAILABLE",
+			"Graph not available",
+			"Ensure the graph module is initialized",
+		)
+	}
+
+	validTypes := map[string]bool{
+		"extends": true, "depends_on": true, "conflicts_with": true,
+		"example_of": true, "part_of": true, "related_to": true,
+	}
+	if !validTypes[input.Type] {
+		return synkroerrors.ErrInvalidRelationType
+	}
+
+	if input.Strength <= 0 {
+		input.Strength = 0.5
+	}
+	if input.Strength > 1 {
+		input.Strength = 1.0
+	}
+
+	relation := &memory.MemoryRelation{
+		SourceID:  input.SourceID,
+		TargetID:  input.TargetID,
+		Type:      input.Type,
+		Strength:  input.Strength,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	if err := s.graph.AddRelation(ctx, relation); err != nil {
+		return synkroerrors.Wrap(err, "GRAPH_ERROR", "Error adding relation", "Check source_id and target_id exist")
+	}
+
+	response := map[string]interface{}{
+		"success":   true,
+		"source_id": input.SourceID,
+		"target_id": input.TargetID,
+		"type":      input.Type,
+		"strength":  input.Strength,
+	}
+
+	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
+	fmt.Fprintf(w, "%s\n", jsonResponse)
+	return nil
+}
+
+func (s *Server) GetRelations(ctx context.Context, input GetRelationsInput, w io.Writer) error {
+	if input.MemoryID == "" {
+		return synkroerrors.Wrap(
+			fmt.Errorf("memory_id is required"),
+			synkroerrors.ErrInvalidInput.Code,
+			synkroerrors.ErrInvalidInput.Message,
+			synkroerrors.ErrInvalidInput.Help,
+		)
+	}
+
+	if s.graph == nil {
+		return synkroerrors.Wrap(
+			fmt.Errorf("graph not available"),
+			"GRAPH_NOT_AVAILABLE",
+			"Graph not available",
+			"Ensure the graph module is initialized",
+		)
+	}
+
+	relations, err := s.graph.GetRelations(ctx, input.MemoryID)
+	if err != nil {
+		return synkroerrors.Wrap(err, "GRAPH_ERROR", "Error getting relations", "Check the memory_id and try again")
+	}
+
+	response := map[string]interface{}{
+		"memory_id": input.MemoryID,
+		"relations": relations,
+		"count":     len(relations),
+	}
+
+	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
+	fmt.Fprintf(w, "%s\n", jsonResponse)
+	return nil
+}
+
+func (s *Server) DeleteRelation(ctx context.Context, input DeleteRelationInput, w io.Writer) error {
+	if input.SourceID == "" || input.TargetID == "" {
+		return synkroerrors.Wrap(
+			fmt.Errorf("source_id and target_id are required"),
+			synkroerrors.ErrInvalidInput.Code,
+			synkroerrors.ErrInvalidInput.Message,
+			synkroerrors.ErrInvalidInput.Help,
+		)
+	}
+
+	if s.graph == nil {
+		return synkroerrors.Wrap(
+			fmt.Errorf("graph not available"),
+			"GRAPH_NOT_AVAILABLE",
+			"Graph not available",
+			"Ensure the graph module is initialized",
+		)
+	}
+
+	if err := s.graph.DeleteRelation(ctx, input.SourceID, input.TargetID); err != nil {
+		return synkroerrors.Wrap(err, synkroerrors.ErrRelationNotFound.Code, "Error deleting relation", synkroerrors.ErrRelationNotFound.Help)
+	}
+
+	response := map[string]interface{}{
+		"success":   true,
+		"source_id": input.SourceID,
+		"target_id": input.TargetID,
+	}
+
+	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
+	fmt.Fprintf(w, "%s\n", jsonResponse)
+	return nil
+}
+
+func (s *Server) FindPath(ctx context.Context, input FindPathInput, w io.Writer) error {
+	if input.FromID == "" || input.ToID == "" {
+		return synkroerrors.Wrap(
+			fmt.Errorf("from_id and to_id are required"),
+			synkroerrors.ErrInvalidInput.Code,
+			synkroerrors.ErrInvalidInput.Message,
+			synkroerrors.ErrInvalidInput.Help,
+		)
+	}
+
+	if s.graph == nil {
+		return synkroerrors.Wrap(
+			fmt.Errorf("graph not available"),
+			"GRAPH_NOT_AVAILABLE",
+			"Graph not available",
+			"Ensure the graph module is initialized",
+		)
+	}
+
+	path, err := s.graph.FindPath(ctx, input.FromID, input.ToID)
+	if err != nil {
+		response := map[string]interface{}{
+			"found":   false,
+			"error":   err.Error(),
+			"from_id": input.FromID,
+			"to_id":   input.ToID,
+		}
+		jsonResponse, _ := json.MarshalIndent(response, "", "  ")
+		fmt.Fprintf(w, "%s\n", jsonResponse)
+		return nil
+	}
+
+	response := map[string]interface{}{
+		"found":   true,
+		"from_id": input.FromID,
+		"to_id":   input.ToID,
+		"path":    path,
+		"length":  len(path),
+	}
+
+	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
+	fmt.Fprintf(w, "%s\n", jsonResponse)
 	return nil
 }
 
@@ -473,179 +673,4 @@ func getConfidenceLevel(similarity float64) string {
 	} else {
 		return "low"
 	}
-}
-
-type AddRelationInput struct {
-	SourceID string  `json:"source_id"`
-	TargetID string  `json:"target_id"`
-	Type     string  `json:"type"`
-	Strength float64 `json:"strength"`
-}
-
-type GetRelationsInput struct {
-	MemoryID string `json:"memory_id"`
-}
-
-type DeleteRelationInput struct {
-	SourceID string `json:"source_id"`
-	TargetID string `json:"target_id"`
-}
-
-type FindPathInput struct {
-	FromID string `json:"from_id"`
-	ToID   string `json:"to_id"`
-}
-
-func AddRelationHandler(input AddRelationInput, w io.Writer) error {
-	ctx := context.Background()
-
-	if globalGraph == nil {
-		fmt.Fprintf(w, "Error: graph not available\n")
-		return fmt.Errorf("graph not available")
-	}
-
-	if input.SourceID == "" || input.TargetID == "" {
-		fmt.Fprintf(w, "Error: source_id and target_id are required\n")
-		return fmt.Errorf("source_id and target_id are required")
-	}
-
-	validTypes := map[string]bool{
-		"extends": true, "depends_on": true, "conflicts_with": true,
-		"example_of": true, "part_of": true, "related_to": true,
-	}
-	if !validTypes[input.Type] {
-		fmt.Fprintf(w, "Error: invalid relation type. Valid: extends, depends_on, conflicts_with, example_of, part_of, related_to\n")
-		return fmt.Errorf("invalid relation type: %s", input.Type)
-	}
-
-	if input.Strength <= 0 {
-		input.Strength = 0.5
-	}
-	if input.Strength > 1 {
-		input.Strength = 1.0
-	}
-
-	relation := &memory.MemoryRelation{
-		SourceID:  input.SourceID,
-		TargetID:  input.TargetID,
-		Type:      input.Type,
-		Strength:  input.Strength,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-
-	if err := globalGraph.AddRelation(ctx, relation); err != nil {
-		fmt.Fprintf(w, "Error adding relation: %v\n", err)
-		return err
-	}
-
-	response := map[string]interface{}{
-		"success":   true,
-		"source_id": input.SourceID,
-		"target_id": input.TargetID,
-		"type":      input.Type,
-		"strength":  input.Strength,
-	}
-
-	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	fmt.Fprintf(w, "%s\n", jsonResponse)
-	return nil
-}
-
-func GetRelationsHandler(input GetRelationsInput, w io.Writer) error {
-	ctx := context.Background()
-
-	if globalGraph == nil {
-		fmt.Fprintf(w, "Error: graph not available\n")
-		return fmt.Errorf("graph not available")
-	}
-
-	if input.MemoryID == "" {
-		fmt.Fprintf(w, "Error: memory_id is required\n")
-		return fmt.Errorf("memory_id is required")
-	}
-
-	relations, err := globalGraph.GetRelations(ctx, input.MemoryID)
-	if err != nil {
-		fmt.Fprintf(w, "Error getting relations: %v\n", err)
-		return err
-	}
-
-	response := map[string]interface{}{
-		"memory_id": input.MemoryID,
-		"relations": relations,
-		"count":     len(relations),
-	}
-
-	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	fmt.Fprintf(w, "%s\n", jsonResponse)
-	return nil
-}
-
-func DeleteRelationHandler(input DeleteRelationInput, w io.Writer) error {
-	ctx := context.Background()
-
-	if globalGraph == nil {
-		fmt.Fprintf(w, "Error: graph not available\n")
-		return fmt.Errorf("graph not available")
-	}
-
-	if input.SourceID == "" || input.TargetID == "" {
-		fmt.Fprintf(w, "Error: source_id and target_id are required\n")
-		return fmt.Errorf("source_id and target_id are required")
-	}
-
-	if err := globalGraph.DeleteRelation(ctx, input.SourceID, input.TargetID); err != nil {
-		fmt.Fprintf(w, "Error deleting relation: %v\n", err)
-		return err
-	}
-
-	response := map[string]interface{}{
-		"success":   true,
-		"source_id": input.SourceID,
-		"target_id": input.TargetID,
-	}
-
-	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	fmt.Fprintf(w, "%s\n", jsonResponse)
-	return nil
-}
-
-func FindPathHandler(input FindPathInput, w io.Writer) error {
-	ctx := context.Background()
-
-	if globalGraph == nil {
-		fmt.Fprintf(w, "Error: graph not available\n")
-		return fmt.Errorf("graph not available")
-	}
-
-	if input.FromID == "" || input.ToID == "" {
-		fmt.Fprintf(w, "Error: from_id and to_id are required\n")
-		return fmt.Errorf("from_id and to_id are required")
-	}
-
-	path, err := globalGraph.FindPath(ctx, input.FromID, input.ToID)
-	if err != nil {
-		response := map[string]interface{}{
-			"found":   false,
-			"error":   err.Error(),
-			"from_id": input.FromID,
-			"to_id":   input.ToID,
-		}
-		jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-		fmt.Fprintf(w, "%s\n", jsonResponse)
-		return nil
-	}
-
-	response := map[string]interface{}{
-		"found":   true,
-		"from_id": input.FromID,
-		"to_id":   input.ToID,
-		"path":    path,
-		"length":  len(path),
-	}
-
-	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	fmt.Fprintf(w, "%s\n", jsonResponse)
-	return nil
 }

@@ -13,6 +13,7 @@ go build -o synkro ./cmd/synkro/
 ./synkro add --title "Test" --content "Content" --type note
 ./synkro list --limit 10
 ./synkro search "query"
+./synkro delete <id>
 
 # Model management
 ./synkro model list                  # List available embedding models
@@ -72,7 +73,7 @@ memory.db           # SQLite database (created by init)
 
 ### Entry Points
 - `cmd/synkro/main.go` - minimal bootstrap
-- `cmd/synkro/commands.go` - Cobra commands (init, add, list, search, tui, mcp)
+- `cmd/synkro/commands.go` - Cobra commands (init, add, list, search, delete, tui, mcp)
 
 ### Core Components
 - **MemoryRepository** (`internal/memory/repository.go`) - CRUD + FTS5 search + hybrid search

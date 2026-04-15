@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -130,6 +132,22 @@ func selfUpdateRun(_ []string) error {
 		return err
 	}
 	defer os.Remove(tempFile)
+
+	expectedSHA256, err := findChecksumForAsset(info.HTMLURL, platformInfo.binaryName)
+	if err == nil && expectedSHA256 != "" {
+		fmt.Println("🔍 Verifying checksum...")
+		actualSHA256, err := fileSHA256(tempFile)
+		if err != nil {
+			fmt.Printf("⚠️  Error computing checksum: %v\n", err)
+			return err
+		}
+		if !strings.EqualFold(actualSHA256, expectedSHA256) {
+			return fmt.Errorf("checksum mismatch: expected %s, got %s", expectedSHA256, actualSHA256)
+		}
+		fmt.Println("✅ Checksum verified")
+	} else {
+		fmt.Println("⚠️  No checksum found, skipping verification")
+	}
 
 	fmt.Println("✅ Download complete")
 	fmt.Println("📦 Installing update...")
@@ -323,40 +341,6 @@ func getPlatform() platformInfoStruct {
 	}
 }
 
-func compareVersions(v1, v2 string) int {
-	parts1 := strings.Split(v1, ".")
-	parts2 := strings.Split(v2, ".")
-
-	for i := 0; i < len(parts1) && i < len(parts2); i++ {
-		n1, _ := parseVersionPart(parts1[i])
-		n2, _ := parseVersionPart(parts2[i])
-
-		if n1 > n2 {
-			return 1
-		} else if n1 < n2 {
-			return -1
-		}
-	}
-
-	return 0
-}
-
-func parseVersionPart(s string) (int, error) {
-	s = strings.TrimPrefix(s, "v")
-	parts := strings.Split(s, "-")
-
-	if len(parts) == 3 {
-		major, _ := strconv.Atoi(parts[0])
-		minor, _ := strconv.Atoi(parts[1])
-		patch, _ := strconv.Atoi(parts[2])
-
-		return major*10000 + minor*100 + patch, nil
-	}
-
-	n, err := strconv.Atoi(s)
-	return n, err
-}
-
 func prompt(question string, required bool) string {
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print(question)
@@ -369,4 +353,72 @@ func prompt(question string, required bool) string {
 	}
 
 	return answer
+}
+
+func compareVersions(v1, v2 string) int {
+	p1 := parseSemver(v1)
+	p2 := parseSemver(v2)
+
+	for i := 0; i < 3; i++ {
+		if p1[i] > p2[i] {
+			return 1
+		} else if p1[i] < p2[i] {
+			return -1
+		}
+	}
+	return 0
+}
+
+func parseSemver(v string) [3]int {
+	v = strings.TrimPrefix(v, "v")
+	parts := strings.SplitN(v, "-", 2)
+	numbers := strings.Split(parts[0], ".")
+
+	result := [3]int{}
+	for i := 0; i < 3 && i < len(numbers); i++ {
+		result[i], _ = strconv.Atoi(numbers[i])
+	}
+	return result
+}
+
+func fileSHA256(filePath string) (string, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func findChecksumForAsset(releaseURL, assetName string) (string, error) {
+	repoURL := strings.TrimSuffix(releaseURL, "/tag/")
+	checksumURL := repoURL + "/download/checksums.txt"
+
+	resp, err := http.Get(checksumURL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("checksums file not found (status %d)", resp.StatusCode)
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		parts := strings.Fields(line)
+		if len(parts) >= 2 {
+			if strings.HasSuffix(parts[1], assetName) {
+				return parts[0], nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no checksum found for %s", assetName)
 }

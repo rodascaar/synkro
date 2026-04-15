@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -8,18 +9,18 @@ import (
 )
 
 type Config struct {
-	DatabasePath        string
-	Debug               bool
-	MaxTokens           int
-	SessionBuffer       int
-	CacheSize           int
-	SimilarityThreshold float64
-	EmbeddingDim        int
-	ModelType           string
-	AutoUpdateCheck     bool
-	CheckUpdateOnStart  bool
-	LastUpdateCheck     int
-	configPath          string
+	DatabasePath        string  `json:"database_path"`
+	Debug               bool    `json:"debug"`
+	MaxTokens           int     `json:"max_tokens"`
+	SessionBuffer       int     `json:"session_buffer"`
+	CacheSize           int     `json:"cache_size"`
+	SimilarityThreshold float64 `json:"similarity_threshold"`
+	EmbeddingDim        int     `json:"embedding_dim"`
+	ModelType           string  `json:"model_type"`
+	AutoUpdateCheck     bool    `json:"auto_update"`
+	CheckUpdateOnStart  bool    `json:"check_update_on_start"`
+	LastUpdateCheck     int     `json:"last_update_check"`
+	configPath          string  `json:"-"`
 }
 
 func Load() (*Config, error) {
@@ -48,6 +49,8 @@ func Load() (*Config, error) {
 
 	cfg.loadFromFile()
 
+	cfg.applyEnvOverrides()
+
 	return cfg, nil
 }
 
@@ -57,11 +60,22 @@ func (c *Config) loadFromFile() {
 		return
 	}
 
-	content := string(data)
+	content := strings.TrimSpace(string(data))
 	if content == "" {
 		return
 	}
 
+	if strings.Contains(content, "=") && !strings.HasPrefix(content, "{") {
+		c.migrateFromKeyValue(content)
+		return
+	}
+
+	if err := json.Unmarshal(data, c); err != nil {
+		return
+	}
+}
+
+func (c *Config) migrateFromKeyValue(content string) {
 	lines := strings.Split(content, "\n")
 	for _, line := range lines {
 		parts := strings.SplitN(line, "=", 2)
@@ -77,64 +91,101 @@ func (c *Config) loadFromFile() {
 				c.DatabasePath = value
 			}
 		case "SYNKRO_DEBUG":
-			c.Debug = getBoolEnv("SYNKRO_DEBUG", c.Debug)
-			if value != "" {
-				if parsed, err := strconv.ParseBool(value); err == nil {
-					c.Debug = parsed
-				}
+			if parsed, err := strconv.ParseBool(value); err == nil {
+				c.Debug = parsed
 			}
 		case "SYNKRO_MAX_TOKENS":
-			if value != "" {
-				if parsed, err := strconv.Atoi(value); err == nil {
-					c.MaxTokens = parsed
-				}
+			if parsed, err := strconv.Atoi(value); err == nil {
+				c.MaxTokens = parsed
 			}
 		case "SYNKRO_SESSION_BUFFER":
-			if value != "" {
-				if parsed, err := strconv.Atoi(value); err == nil {
-					c.SessionBuffer = parsed
-				}
+			if parsed, err := strconv.Atoi(value); err == nil {
+				c.SessionBuffer = parsed
 			}
 		case "SYNKRO_CACHE_SIZE":
-			if value != "" {
-				if parsed, err := strconv.Atoi(value); err == nil {
-					c.CacheSize = parsed
-				}
+			if parsed, err := strconv.Atoi(value); err == nil {
+				c.CacheSize = parsed
 			}
 		case "SYNKRO_SIMILARITY_THRESHOLD":
-			if value != "" {
-				if parsed, err := strconv.ParseFloat(value, 64); err == nil {
-					c.SimilarityThreshold = parsed
-				}
+			if parsed, err := strconv.ParseFloat(value, 64); err == nil {
+				c.SimilarityThreshold = parsed
 			}
 		case "SYNKRO_EMBEDDING_DIM":
-			if value != "" {
-				if parsed, err := strconv.Atoi(value); err == nil {
-					c.EmbeddingDim = parsed
-				}
+			if parsed, err := strconv.Atoi(value); err == nil {
+				c.EmbeddingDim = parsed
 			}
 		case "SYNKRO_MODEL_TYPE":
 			if value != "" {
 				c.ModelType = value
 			}
 		case "SYNKRO_AUTO_UPDATE":
-			if value != "" {
-				if parsed, err := strconv.ParseBool(value); err == nil {
-					c.AutoUpdateCheck = parsed
-				}
+			if parsed, err := strconv.ParseBool(value); err == nil {
+				c.AutoUpdateCheck = parsed
 			}
 		case "SYNKRO_CHECK_UPDATE_ON_START":
-			if value != "" {
-				if parsed, err := strconv.ParseBool(value); err == nil {
-					c.CheckUpdateOnStart = parsed
-				}
+			if parsed, err := strconv.ParseBool(value); err == nil {
+				c.CheckUpdateOnStart = parsed
 			}
 		case "SYNKRO_LAST_UPDATE_CHECK":
-			if value != "" {
-				if parsed, err := strconv.Atoi(value); err == nil {
-					c.LastUpdateCheck = parsed
-				}
+			if parsed, err := strconv.Atoi(value); err == nil {
+				c.LastUpdateCheck = parsed
 			}
+		}
+	}
+
+	_ = Save(c)
+}
+
+func (c *Config) applyEnvOverrides() {
+	if v := os.Getenv("SYNKRO_DB_PATH"); v != "" {
+		c.DatabasePath = v
+	}
+	if v := os.Getenv("SYNKRO_DEBUG"); v != "" {
+		if parsed, err := strconv.ParseBool(v); err == nil {
+			c.Debug = parsed
+		}
+	}
+	if v := os.Getenv("SYNKRO_MAX_TOKENS"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			c.MaxTokens = parsed
+		}
+	}
+	if v := os.Getenv("SYNKRO_SESSION_BUFFER"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			c.SessionBuffer = parsed
+		}
+	}
+	if v := os.Getenv("SYNKRO_CACHE_SIZE"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			c.CacheSize = parsed
+		}
+	}
+	if v := os.Getenv("SYNKRO_SIMILARITY_THRESHOLD"); v != "" {
+		if parsed, err := strconv.ParseFloat(v, 64); err == nil {
+			c.SimilarityThreshold = parsed
+		}
+	}
+	if v := os.Getenv("SYNKRO_EMBEDDING_DIM"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			c.EmbeddingDim = parsed
+		}
+	}
+	if v := os.Getenv("SYNKRO_MODEL_TYPE"); v != "" {
+		c.ModelType = v
+	}
+	if v := os.Getenv("SYNKRO_AUTO_UPDATE"); v != "" {
+		if parsed, err := strconv.ParseBool(v); err == nil {
+			c.AutoUpdateCheck = parsed
+		}
+	}
+	if v := os.Getenv("SYNKRO_CHECK_UPDATE_ON_START"); v != "" {
+		if parsed, err := strconv.ParseBool(v); err == nil {
+			c.CheckUpdateOnStart = parsed
+		}
+	}
+	if v := os.Getenv("SYNKRO_LAST_UPDATE_CHECK"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			c.LastUpdateCheck = parsed
 		}
 	}
 }
@@ -145,47 +196,12 @@ func Save(cfg *Config) error {
 		return err
 	}
 
-	var lines []string
-	if cfg.DatabasePath != "memory.db" {
-		lines = append(lines, "SYNKRO_DB_PATH="+cfg.DatabasePath)
-	}
-	if cfg.Debug {
-		lines = append(lines, "SYNKRO_DEBUG=true")
-	}
-	if cfg.MaxTokens != 4000 {
-		lines = append(lines, "SYNKRO_MAX_TOKENS="+strconv.Itoa(cfg.MaxTokens))
-	}
-	if cfg.SessionBuffer != 20 {
-		lines = append(lines, "SYNKRO_SESSION_BUFFER="+strconv.Itoa(cfg.SessionBuffer))
-	}
-	if cfg.CacheSize != 1000 {
-		lines = append(lines, "SYNKRO_CACHE_SIZE="+strconv.Itoa(cfg.CacheSize))
-	}
-	if cfg.SimilarityThreshold != 0.5 {
-		lines = append(lines, "SYNKRO_SIMILARITY_THRESHOLD="+strconv.FormatFloat(cfg.SimilarityThreshold, 'f', -1, 64))
-	}
-	if cfg.EmbeddingDim != 384 {
-		lines = append(lines, "SYNKRO_EMBEDDING_DIM="+strconv.Itoa(cfg.EmbeddingDim))
-	}
-	if cfg.ModelType != "tfidf" {
-		lines = append(lines, "SYNKRO_MODEL_TYPE="+cfg.ModelType)
-	}
-	if !cfg.AutoUpdateCheck {
-		lines = append(lines, "SYNKRO_AUTO_UPDATE=false")
-	}
-	if !cfg.CheckUpdateOnStart {
-		lines = append(lines, "SYNKRO_CHECK_UPDATE_ON_START=false")
-	}
-	if cfg.LastUpdateCheck != 0 {
-		lines = append(lines, "SYNKRO_LAST_UPDATE_CHECK="+strconv.Itoa(cfg.LastUpdateCheck))
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
 	}
 
-	content := strings.Join(lines, "\n")
-	if content != "" {
-		content += "\n"
-	}
-
-	return os.WriteFile(cfg.configPath, []byte(content), 0644)
+	return os.WriteFile(cfg.configPath, append(data, '\n'), 0644)
 }
 
 func getEnv(key, defaultValue string) string {

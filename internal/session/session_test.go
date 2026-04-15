@@ -183,3 +183,40 @@ func TestSessionTracker_GetOrCreate_Idempotent(t *testing.T) {
 	s2 := tracker.GetOrCreate(ctx, "s1")
 	assert.Same(t, s1, s2)
 }
+
+func TestSessionTracker_GetRecentDeliveries_Order(t *testing.T) {
+	tracker := NewSessionTracker(nil)
+	ctx := context.Background()
+
+	session := tracker.GetOrCreate(ctx, "order-test")
+	base := time.Now().UTC()
+
+	session.DeliveredMemories["first"] = &DeliveredMemory{
+		MemoryID:    "first",
+		DeliveredAt: base.Add(-3 * time.Minute),
+	}
+	session.DeliveredMemories["second"] = &DeliveredMemory{
+		MemoryID:    "second",
+		DeliveredAt: base.Add(-1 * time.Minute),
+	}
+	session.DeliveredMemories["third"] = &DeliveredMemory{
+		MemoryID:    "third",
+		DeliveredAt: base.Add(-5 * time.Minute),
+	}
+	session.DeliveredMemories["fourth"] = &DeliveredMemory{
+		MemoryID:    "fourth",
+		DeliveredAt: base.Add(-2 * time.Second),
+	}
+
+	deliveries := tracker.GetRecentDeliveries(ctx, "order-test", 10)
+	require.Len(t, deliveries, 4)
+	assert.Equal(t, "fourth", deliveries[0], "most recent should be first")
+	assert.Equal(t, "second", deliveries[1], "second most recent")
+	assert.Equal(t, "first", deliveries[2], "third most recent")
+	assert.Equal(t, "third", deliveries[3], "oldest should be last")
+
+	deliveries = tracker.GetRecentDeliveries(ctx, "order-test", 2)
+	require.Len(t, deliveries, 2)
+	assert.Equal(t, "fourth", deliveries[0])
+	assert.Equal(t, "second", deliveries[1])
+}

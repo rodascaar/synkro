@@ -12,14 +12,16 @@ type Graph struct {
 	mu        sync.RWMutex
 	repo      *memory.Repository
 	graphRepo *Repository
-	relation  []*memory.MemoryRelation
+	outgoing  map[string][]*memory.MemoryRelation
+	incoming  map[string][]*memory.MemoryRelation
 }
 
 func NewGraph(repo *memory.Repository, graphRepo *Repository) *Graph {
 	g := &Graph{
 		repo:      repo,
 		graphRepo: graphRepo,
-		relation:  make([]*memory.MemoryRelation, 0),
+		outgoing:  make(map[string][]*memory.MemoryRelation),
+		incoming:  make(map[string][]*memory.MemoryRelation),
 	}
 
 	if graphRepo != nil {
@@ -40,7 +42,10 @@ func (g *Graph) loadFromDB(ctx context.Context) {
 	}
 
 	g.mu.Lock()
-	g.relation = relations
+	for _, rel := range relations {
+		g.outgoing[rel.SourceID] = append(g.outgoing[rel.SourceID], rel)
+		g.incoming[rel.TargetID] = append(g.incoming[rel.TargetID], rel)
+	}
 	g.mu.Unlock()
 }
 
@@ -48,7 +53,8 @@ func (g *Graph) AddRelation(ctx context.Context, relation *memory.MemoryRelation
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	g.relation = append(g.relation, relation)
+	g.outgoing[relation.SourceID] = append(g.outgoing[relation.SourceID], relation)
+	g.incoming[relation.TargetID] = append(g.incoming[relation.TargetID], relation)
 
 	if g.graphRepo != nil {
 		return g.graphRepo.Add(ctx, relation)
@@ -61,8 +67,6 @@ func (g *Graph) GetRelations(ctx context.Context, memoryID string) ([]*memory.Me
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
-	var relations []*memory.MemoryRelation
-
 	if g.graphRepo != nil {
 		dbRelations, err := g.graphRepo.Get(ctx, memoryID)
 		if err == nil {
@@ -70,13 +74,39 @@ func (g *Graph) GetRelations(ctx context.Context, memoryID string) ([]*memory.Me
 		}
 	}
 
-	for _, rel := range g.relation {
-		if rel.SourceID == memoryID || rel.TargetID == memoryID {
-			relations = append(relations, rel)
-		}
-	}
+	var relations []*memory.MemoryRelation
+	relations = append(relations, g.outgoing[memoryID]...)
+	relations = append(relations, g.incoming[memoryID]...)
 
 	return relations, nil
+}
+
+type neighbor struct {
+	nodeID   string
+	reversed bool
+}
+
+func (g *Graph) neighbors(current string) []neighbor {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	var neighbors []neighbor
+
+	for _, rel := range g.outgoing[current] {
+		neighbors = append(neighbors, neighbor{
+			nodeID:   rel.TargetID,
+			reversed: false,
+		})
+	}
+
+	for _, rel := range g.incoming[current] {
+		neighbors = append(neighbors, neighbor{
+			nodeID:   rel.SourceID,
+			reversed: true,
+		})
+	}
+
+	return neighbors
 }
 
 func (g *Graph) FindPath(ctx context.Context, fromID, toID string) ([]string, error) {
@@ -85,6 +115,7 @@ func (g *Graph) FindPath(ctx context.Context, fromID, toID string) ([]string, er
 	}
 
 	parent := make(map[string]string)
+	parentReversed := make(map[string]bool)
 	visited := make(map[string]bool)
 	queue := []string{fromID}
 	visited[fromID] = true
@@ -93,17 +124,17 @@ func (g *Graph) FindPath(ctx context.Context, fromID, toID string) ([]string, er
 		current := queue[0]
 		queue = queue[1:]
 
-		relations, _ := g.GetRelations(ctx, current)
-		for _, rel := range relations {
-			next := rel.TargetID
-			if visited[next] {
+		neighbors := g.neighbors(current)
+		for _, n := range neighbors {
+			if visited[n.nodeID] {
 				continue
 			}
-			visited[next] = true
-			parent[next] = current
+			visited[n.nodeID] = true
+			parent[n.nodeID] = current
+			parentReversed[n.nodeID] = n.reversed
 
-			if next == toID {
-				path := []string{next}
+			if n.nodeID == toID {
+				path := []string{n.nodeID}
 				for node := current; node != fromID; node = parent[node] {
 					path = append([]string{node}, path...)
 				}
@@ -111,7 +142,7 @@ func (g *Graph) FindPath(ctx context.Context, fromID, toID string) ([]string, er
 				return path, nil
 			}
 
-			queue = append(queue, next)
+			queue = append(queue, n.nodeID)
 		}
 	}
 
@@ -124,8 +155,13 @@ func (g *Graph) GetStats(ctx context.Context) (map[string]int, error) {
 
 	stats := make(map[string]int)
 
-	for _, rel := range g.relation {
-		stats[string(rel.Type)]++
+	for _, rels := range g.outgoing {
+		stats[string(memory.RelationExtends)] += len(rels)
+	}
+	for _, rels := range g.incoming {
+		for _, rel := range rels {
+			stats[string(rel.Type)]++
+		}
 	}
 
 	return stats, nil
@@ -141,13 +177,29 @@ func (g *Graph) DeleteRelation(ctx context.Context, sourceID, targetID string) e
 		}
 	}
 
-	filtered := make([]*memory.MemoryRelation, 0, len(g.relation))
-	for _, rel := range g.relation {
-		if !(rel.SourceID == sourceID && rel.TargetID == targetID) {
-			filtered = append(filtered, rel)
+	filterOutgoing := make([]*memory.MemoryRelation, 0, len(g.outgoing[sourceID]))
+	for _, rel := range g.outgoing[sourceID] {
+		if rel.TargetID != targetID {
+			filterOutgoing = append(filterOutgoing, rel)
 		}
 	}
-	g.relation = filtered
+	if len(filterOutgoing) > 0 {
+		g.outgoing[sourceID] = filterOutgoing
+	} else {
+		delete(g.outgoing, sourceID)
+	}
+
+	filterIncoming := make([]*memory.MemoryRelation, 0, len(g.incoming[targetID]))
+	for _, rel := range g.incoming[targetID] {
+		if rel.SourceID != sourceID {
+			filterIncoming = append(filterIncoming, rel)
+		}
+	}
+	if len(filterIncoming) > 0 {
+		g.incoming[targetID] = filterIncoming
+	} else {
+		delete(g.incoming, targetID)
+	}
 
 	return nil
 }

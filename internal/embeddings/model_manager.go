@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"time"
 )
 
 type ModelInfo struct {
@@ -59,7 +60,7 @@ func NewModelManager(config *ManagerConfig) *ModelManager {
 	mm := &ModelManager{
 		config:      config,
 		models:      make(map[string]*ModelInfo),
-		httpClient:  &http.Client{},
+		httpClient:  &http.Client{Timeout: time.Duration(config.TimeoutSeconds) * time.Second},
 		downloadDir: config.DownloadDir,
 	}
 

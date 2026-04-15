@@ -126,10 +126,7 @@ func (g *TFIDFEmbeddingGenerator) generateNgrams(tokens []string, n int) []strin
 	}
 
 	ngrams := make([]string, 0, len(tokens)+(len(tokens)-1)*(n-1))
-
-	for _, token := range tokens {
-		ngrams = append(ngrams, token)
-	}
+	ngrams = append(ngrams, tokens...)
 
 	for i := 0; i < len(tokens)-n+1; i++ {
 		ngram := strings.Join(tokens[i:i+n], "_")

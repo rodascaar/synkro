@@ -19,32 +19,14 @@ func TestCompareVersions(t *testing.T) {
 		{"1.0.0", "1.0.1", -1},
 		{"0.1.0", "0.1.0", 0},
 		{"10.0.0", "9.9.9", 1},
+		{"v1.0.0", "v1.0.0", 0},
+		{"v2.0.0", "v1.0.0", 1},
+		{"1.0.0-beta", "1.0.0", 0},
 	}
 
 	for _, tt := range tests {
 		got := compareVersions(tt.v1, tt.v2)
 		assert.Equal(t, tt.want, got, "compareVersions(%q, %q)", tt.v1, tt.v2)
-	}
-}
-
-func TestParseVersionPart(t *testing.T) {
-	tests := []struct {
-		input string
-		want  int
-	}{
-		{"1", 1},
-		{"0", 0},
-		{"42", 42},
-		{"v1", 1},
-		{"v0", 0},
-		{"1-0-0", 10000},
-		{"2-1-3", 20103},
-	}
-
-	for _, tt := range tests {
-		got, err := parseVersionPart(tt.input)
-		assert.NoError(t, err)
-		assert.Equal(t, tt.want, got, "parseVersionPart(%q)", tt.input)
 	}
 }
 

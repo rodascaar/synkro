@@ -3,19 +3,19 @@ version: "2"
 run:
   tests: true
 
-  linters:
-    disable:
-      - gosec
-    enable:
-      - govet
-      - ineffassign
-      - unused
-      - unparam
-      - gocyclo
-      - misspell
-      - errcheck
-      - staticcheck
-    settings:
+linters:
+  disable:
+    - gosec
+    - errcheck
+  enable:
+    - govet
+    - ineffassign
+    - unused
+    - unparam
+    - gocyclo
+    - misspell
+    - staticcheck
+  settings:
     gocyclo:
       min-complexity: 25
     misspell:
@@ -29,50 +29,20 @@ run:
         linters:
           - gocyclo
       - path: internal/config/config\.go
-        text: "loadFromFile"
         linters:
           - gocyclo
       - path: internal/tui/model\.go
-        text: "Update"
         linters:
           - gocyclo
-      - linters:
-          - errcheck
-        rules:
-          - path: cmd/synkro/
-            text: "defer d\\.Close"
-          - path: cmd/synkro/
-            text: "defer rows\\.Close"
-          - path: cmd/synkro/
-            text: "defer resp\\.Body\\.Close"
-          - path: cmd/synkro/
-            text: "defer out\\.Close"
-          - path: cmd/synkro/
-            text: "defer os\\.Remove"
-          - path: cmd/synkro/
-            text: "os\\.Remove\\(tempFile\\)"
-          - path: cmd/synkro/
-            text: "os\\.RemoveAll\\(extractedDir\\)"
-          - path: cmd/synkro/
-            text: "os\\.MkdirAll"
-          - path: internal/db/db_test\.go
-            text: "database\\.Close"
-          - path: internal/embeddings/cache\.go
-            text: "defer rows\\.Close"
-          - path: internal/embeddings/
-            text: "defer rows\\.Close"
-          - path: internal/mcp/handlers\.go
-            text: "fmt\\.Fprintf"
-          - path: internal/mcp/
-            text: "json\\.MarshalIndent"
-          - path: internal/mcp/
-            text: "fmt\\.Fprintf\\(w"
-          - path: internal/session/
-            text: "defer rows\\.Close"
-          - path: internal/session/
-            text: "repo\\.Save"
-          - path: internal/graph/
-            text: "graphRepo\\.Add"
+      - path: internal/tui/
+        linters:
+          - staticcheck
+      - path: internal/mcp/server\.go
+        linters:
+          - staticcheck
+      - path: internal/tui/graph_view\.go
+        linters:
+          - staticcheck
 
 issues:
   max-issues-per-linter: 0

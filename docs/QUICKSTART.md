@@ -69,6 +69,9 @@ Esto crea `memory.db` con el esquema completo.
 # Buscar por término
 ./synkro search "Bubble Tea"
 
+# Eliminar memoria
+./synkro delete <id>
+
 # Buscar en contenido y título
 ./synkro search "proyecto"
 ```
@@ -205,7 +208,7 @@ Editar settings JSON con configuración MCP
 
 ```bash
 # Versión
-./synkro --version
+./synkro version
 
 # Ayuda
 ./synkro --help
@@ -240,13 +243,6 @@ Editar settings JSON con configuración MCP
 ```
 
 ## 🧪 Testing
-
-### Script de Pruebas
-
-```bash
-# Ejecutar script completo de pruebas
-bash test-tui-complete.sh
-```
 
 ### Pruebas Manuales
 
@@ -329,8 +325,6 @@ export TERM=xterm-256color
 - [INSTALL.md](./INSTALL.md) - Guía de instalación MCP
 - [EMBEDDINGS.md](./EMBEDDINGS.md) - Modelos de embeddings
 - [TUI.md](./TUI.md) - Guía detallada de la TUI
-- [TUI_FIXES.md](./TUI_FIXES.md) - Guía de pruebas y fixes
-
 ## 🎯 Tips de Uso
 
 1. **Búsqueda eficiente**: Usa `/` para filtrar rápidamente

@@ -234,7 +234,7 @@ func (g *ONNXEmbeddingGenerator) Generate(ctx context.Context, text string) ([]f
 	}
 
 	allHidden := outputTensor.GetData()
-	embedding := meanPool(allHidden, int(seqLen), dim)
+	embedding := meanPool(allHidden, attentionMask, int(seqLen), dim)
 
 	if g.cache != nil {
 		_ = g.cache.Set(ctx, text, embedding, g.modelInfo.Name)
@@ -243,24 +243,21 @@ func (g *ONNXEmbeddingGenerator) Generate(ctx context.Context, text string) ([]f
 	return embedding, nil
 }
 
-func meanPool(hidden []float32, seqLen, dim int) []float32 {
+func meanPool(hidden []float32, attentionMask []int64, seqLen, dim int) []float32 {
 	embedding := make([]float32, dim)
-	count := float32(0)
 
-	for i := 0; i < seqLen; i++ {
-		if i == 0 || i == seqLen-1 {
-			continue
+	for j := 0; j < dim; j++ {
+		sum := float32(0)
+		count := float32(0)
+		for i := 0; i < seqLen; i++ {
+			if attentionMask[i] == 0 {
+				continue
+			}
+			sum += hidden[i*dim+j]
+			count++
 		}
-		offset := i * dim
-		for j := 0; j < dim; j++ {
-			embedding[j] += hidden[offset+j]
-		}
-		count++
-	}
-
-	if count > 0 {
-		for j := 0; j < dim; j++ {
-			embedding[j] /= count
+		if count > 0 {
+			embedding[j] = sum / count
 		}
 	}
 

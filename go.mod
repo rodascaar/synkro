@@ -3,6 +3,7 @@ module github.com/rodascaar/synkro
 go 1.24.2
 
 require (
+	github.com/asg017/sqlite-vec-go-bindings v0.1.6
 	github.com/charmbracelet/bubbles v0.19.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0

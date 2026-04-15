@@ -17,7 +17,7 @@ MODELS_DIR := models
 INSTALL_DIR := $(HOME)/.synkro
 
 # Build targets
-.PHONY: all build clean install test lint package help
+.PHONY: all build clean install test test-short bench lint package help
 
 # Default target
 all: build
@@ -79,6 +79,18 @@ test-coverage: test
 	@echo "📊 Generating coverage report..."
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "✅ Coverage report: coverage.html"
+
+# Run quick tests
+test-short:
+	@echo "⚡ Running quick tests..."
+	go test ./... -short -timeout 30s
+	@echo "✅ Quick tests complete"
+
+# Run benchmarks
+bench:
+	@echo "📊 Running benchmarks..."
+	go test ./... -bench=. -benchmem -timeout 60s
+	@echo "✅ Benchmarks complete"
 
 # Run linter
 lint:

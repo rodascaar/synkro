@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rodascaar/synkro/internal/db"
 	"github.com/rodascaar/synkro/internal/embeddings"
 )
 
@@ -55,6 +56,18 @@ func (r *Repository) Create(ctx context.Context, mem *Memory) error {
 		return err
 	}
 
+	if len(mem.Tags) > 0 {
+		for _, tag := range mem.Tags {
+			if tag == "" {
+				continue
+			}
+			_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO memory_tags (memory_id, tag) VALUES (?, ?)`, id, tag)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	mem.ID = id
 
 	if err := tx.Commit(); err != nil {
@@ -72,11 +85,33 @@ func (r *Repository) Create(ctx context.Context, mem *Memory) error {
 }
 
 func (r *Repository) saveEmbedding(ctx context.Context, memoryID string, embedding []float32) error {
+	if err := db.InsertVector(ctx, r.db, memoryID, embedding); err != nil {
+		return err
+	}
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO memory_embeddings (memory_id, embedding, created_at)
 		VALUES (?, ?, ?)
-	`, memoryID, embedding, time.Now().UTC().Format(time.RFC3339))
+		ON CONFLICT DO NOTHING
+	`, memoryID, embeddings.SerializeEmbedding(embedding), time.Now().UTC().Format(time.RFC3339))
 	return err
+}
+
+func (r *Repository) loadTags(ctx context.Context, memoryID string) ([]string, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT tag FROM memory_tags WHERE memory_id = ? ORDER BY tag`, memoryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tags []string
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			continue
+		}
+		tags = append(tags, tag)
+	}
+	return tags, nil
 }
 
 func (r *Repository) Get(ctx context.Context, id string) (*Memory, error) {
@@ -99,7 +134,10 @@ func (r *Repository) Get(ctx context.Context, id string) (*Memory, error) {
 	mem.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
 	mem.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
 
-	if tagsStr != "" {
+	tags, err := r.loadTags(ctx, mem.ID)
+	if err == nil && len(tags) > 0 {
+		mem.Tags = tags
+	} else if tagsStr != "" {
 		mem.Tags = strings.Split(tagsStr, "|")
 	}
 
@@ -163,8 +201,33 @@ func (r *Repository) Search(ctx context.Context, query string, filter MemoryFilt
 }
 
 func (r *Repository) vectorialSearch(ctx context.Context, queryEmbedding []float32, filter MemoryFilter) ([]*Memory, error) {
-	where := "WHERE 1=1"
-	args := []interface{}{}
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+
+	vecResults, err := db.SearchVectors(ctx, r.db, queryEmbedding, limit)
+	if err == nil && len(vecResults) > 0 {
+		return r.loadMemoriesByIDs(ctx, vecResults, filter, limit)
+	}
+
+	return r.fallbackVectorialSearch(ctx, queryEmbedding, filter, limit)
+}
+
+func (r *Repository) loadMemoriesByIDs(ctx context.Context, vecResults []*db.VectorSearchResult, filter MemoryFilter, limit int) ([]*Memory, error) {
+	ids := make([]string, 0, len(vecResults))
+	for _, vr := range vecResults {
+		ids = append(ids, vr.MemoryID)
+	}
+
+	placeholders := strings.Repeat("?,", len(ids))
+	placeholders = placeholders[:len(placeholders)-1]
+
+	where := fmt.Sprintf("WHERE m.id IN (%s)", placeholders)
+	args := make([]interface{}, 0, len(ids)+2)
+	for _, id := range ids {
+		args = append(args, id)
+	}
 
 	if filter.Type != "" {
 		where += " AND m.type = ?"
@@ -175,9 +238,58 @@ func (r *Repository) vectorialSearch(ctx context.Context, queryEmbedding []float
 		args = append(args, filter.Status)
 	}
 
-	limit := filter.Limit
-	if limit <= 0 {
-		limit = 50
+	sqlQuery := fmt.Sprintf(`
+		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, m.source, m.status
+		FROM memories m
+		%s
+		LIMIT ?
+	`, where)
+	args = append(args, limit)
+
+	rows, err := r.db.QueryContext(ctx, sqlQuery, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	idOrder := make(map[string]int)
+	for i, vr := range vecResults {
+		idOrder[vr.MemoryID] = i
+	}
+
+	var memories []*Memory
+	for rows.Next() {
+		mem := &Memory{}
+		var createdAtStr, updatedAtStr string
+
+		if err := rows.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &mem.Source, &mem.Status); err != nil {
+			return nil, err
+		}
+
+		mem.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
+		mem.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
+		mem.Tags, _ = r.loadTags(ctx, mem.ID)
+		memories = append(memories, mem)
+	}
+
+	sort.Slice(memories, func(i, j int) bool {
+		return idOrder[memories[i].ID] < idOrder[memories[j].ID]
+	})
+
+	return memories, nil
+}
+
+func (r *Repository) fallbackVectorialSearch(ctx context.Context, queryEmbedding []float32, filter MemoryFilter, limit int) ([]*Memory, error) {
+	where := "WHERE 1=1"
+	args := []interface{}{}
+
+	if filter.Type != "" {
+		where += " AND m.type = ?"
+		args = append(args, filter.Type)
+	}
+	if filter.Status != "" {
+		where += " AND m.status = ?"
+		args = append(args, filter.Status)
 	}
 
 	sqlQuery := fmt.Sprintf(`
@@ -324,6 +436,8 @@ func (r *Repository) searchWithBM25(ctx context.Context, query string, filter Hy
 		args = append(args, filter.Status)
 	}
 
+	safeQuery := sanitizeFTS5Query(query)
+
 	sqlQuery := fmt.Sprintf(`
 		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, m.source, m.status, m.tags, rank
 		FROM memories m
@@ -332,7 +446,7 @@ func (r *Repository) searchWithBM25(ctx context.Context, query string, filter Hy
 		ORDER BY rank
 		LIMIT 50
 	`, where)
-	args = append(args, query)
+	args = append(args, safeQuery)
 
 	rows, err := r.db.QueryContext(ctx, sqlQuery, args...)
 	if err != nil {
@@ -530,11 +644,14 @@ func (r *Repository) Update(ctx context.Context, id string, update *MemoryUpdate
 	sets := []string{}
 	args := []interface{}{}
 
-	if update.Title != nil {
+	titleChanged := update.Title != nil
+	contentChanged := update.Content != nil
+
+	if titleChanged {
 		sets = append(sets, "title = ?")
 		args = append(args, *update.Title)
 	}
-	if update.Content != nil {
+	if contentChanged {
 		sets = append(sets, "content = ?")
 		args = append(args, *update.Content)
 	}
@@ -554,11 +671,132 @@ func (r *Repository) Update(ctx context.Context, id string, update *MemoryUpdate
 	args = append(args, time.Now().UTC().Format(time.RFC3339))
 	args = append(args, id)
 
-	_, err := r.db.ExecContext(ctx, fmt.Sprintf("UPDATE memories SET %s WHERE id = ?", strings.Join(sets, ", ")), args...)
-	return err
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	_, err = tx.ExecContext(ctx, fmt.Sprintf("UPDATE memories SET %s WHERE id = ?", strings.Join(sets, ", ")), args...)
+	if err != nil {
+		return err
+	}
+
+	if update.Tags != nil {
+		_, err = tx.ExecContext(ctx, `DELETE FROM memory_tags WHERE memory_id = ?`, id)
+		if err != nil {
+			return err
+		}
+		for _, tag := range update.Tags {
+			if tag == "" {
+				continue
+			}
+			_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO memory_tags (memory_id, tag) VALUES (?, ?)`, id, tag)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	if (titleChanged || contentChanged) && r.embeddingGenerator != nil {
+		current, err := r.Get(ctx, id)
+		if err == nil && current != nil {
+			newTitle := current.Title
+			newContent := current.Content
+			if update.Title != nil {
+				newTitle = *update.Title
+			}
+			if update.Content != nil {
+				newContent = *update.Content
+			}
+
+			embedding, err := r.embeddingGenerator.Generate(ctx, newTitle+" "+newContent)
+			if err == nil {
+				vecData := embeddings.SerializeEmbedding(embedding)
+				_, _ = tx.ExecContext(ctx, `
+					UPDATE memory_embeddings SET embedding = ? WHERE memory_id = ?
+				`, vecData, id)
+				_ = db.UpdateVector(ctx, tx, id, embedding)
+			}
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (r *Repository) GetByTag(ctx context.Context, tag string, filter MemoryFilter) ([]*Memory, error) {
+	where := "WHERE mt.tag = ?"
+	args := []interface{}{tag}
+
+	if filter.Type != "" {
+		where += " AND m.type = ?"
+		args = append(args, filter.Type)
+	}
+	if filter.Status != "" {
+		where += " AND m.status = ?"
+		args = append(args, filter.Status)
+	}
+
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+
+	sqlQuery := fmt.Sprintf(`
+		SELECT DISTINCT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, m.source, m.status, m.tags
+		FROM memories m
+		INNER JOIN memory_tags mt ON m.id = mt.memory_id
+		%s
+		ORDER BY m.created_at DESC
+		LIMIT ?
+	`, where)
+	args = append(args, limit)
+
+	rows, err := r.db.QueryContext(ctx, sqlQuery, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var memories []*Memory
+	for rows.Next() {
+		mem := &Memory{}
+		var tagsStr string
+		var createdAtStr, updatedAtStr string
+
+		if err := rows.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &mem.Source, &mem.Status, &tagsStr); err != nil {
+			return nil, err
+		}
+
+		mem.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
+		mem.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
+		mem.Tags, _ = r.loadTags(ctx, mem.ID)
+		memories = append(memories, mem)
+	}
+
+	return memories, nil
 }
 
 func (r *Repository) Delete(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM memories WHERE id = ?", id)
 	return err
+}
+
+func sanitizeFTS5Query(query string) string {
+	terms := strings.Fields(query)
+	var safe []string
+	for _, term := range terms {
+		term = strings.Trim(term, "\"'*():")
+		if term == "" {
+			continue
+		}
+		term = strings.ReplaceAll(term, "\"", "")
+		safe = append(safe, "\""+term+"\"")
+	}
+	if len(safe) == 0 {
+		return "\"\""
+	}
+	return strings.Join(safe, " ")
 }

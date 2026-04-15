@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
 )
@@ -109,7 +110,7 @@ func (st *SessionTracker) MarkAsDelivered(ctx context.Context, sessionID, memory
 	}
 }
 
-func (st *SessionTracker) GetRecentDeliveries(ctx context.Context, sessionID string, limit int) []string {
+func (st *SessionTracker) GetRecentDeliveries(_ context.Context, sessionID string, limit int) []string {
 	st.mu.RLock()
 	defer st.mu.RUnlock()
 
@@ -118,15 +119,24 @@ func (st *SessionTracker) GetRecentDeliveries(ctx context.Context, sessionID str
 		return []string{}
 	}
 
-	deliveries := make([]string, 0)
-	for _, delivered := range session.DeliveredMemories {
-		deliveries = append(deliveries, delivered.MemoryID)
-		if len(deliveries) >= limit {
-			break
-		}
+	deliveries := make([]*DeliveredMemory, 0, len(session.DeliveredMemories))
+	for _, d := range session.DeliveredMemories {
+		deliveries = append(deliveries, d)
 	}
 
-	return deliveries
+	sort.Slice(deliveries, func(i, j int) bool {
+		return deliveries[i].DeliveredAt.After(deliveries[j].DeliveredAt)
+	})
+
+	result := make([]string, 0, limit)
+	for i, d := range deliveries {
+		if i >= limit {
+			break
+		}
+		result = append(result, d.MemoryID)
+	}
+
+	return result
 }
 
 func (st *SessionTracker) UpdateLastQuery(ctx context.Context, sessionID, query string) {

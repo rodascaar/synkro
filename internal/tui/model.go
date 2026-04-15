@@ -208,6 +208,18 @@ func (m *model) searchMemories(query string) []*memory.Memory {
 		return m.filterMemories()
 	}
 
+	results, err := m.repo.HybridSearch(m.ctx, query, 100, memory.HybridSearchFilter{
+		Type:   m.filterType,
+		Status: "active",
+	})
+	if err == nil && len(results) > 0 {
+		memories := make([]*memory.Memory, 0, len(results))
+		for _, r := range results {
+			memories = append(memories, r.Memory)
+		}
+		return memories
+	}
+
 	base := m.filterMemories()
 	filtered := make([]*memory.Memory, 0)
 	queryLower := strings.ToLower(query)

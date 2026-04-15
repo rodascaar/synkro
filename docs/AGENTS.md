@@ -32,7 +32,7 @@ go build -o synkro ./cmd/synkro/
 
 ```bash
 # Si ya tienes el binario compilado
-cd /Users/home/Downloads/nichogram/synkro
+cd ~/projects/synkro
 ./synkro init
 ```
 
@@ -58,7 +58,7 @@ Editar archivo: `~/Library/Application Support/Claude/claude_desktop_config.json
 {
   "mcpServers": {
     "synkro": {
-      "command": "/Users/home/Downloads/nichogram/synkro/synkro",
+      "command": "/Users/home/projects/synkro/synkro",
       "args": ["mcp"]
     }
   }
@@ -457,7 +457,7 @@ which synkro
 ./synkro --version
 
 # Test conexión
-./synkro mcp --test
+./synkro mcp
 ```
 
 ### Probar Herramientas Individualmente
@@ -471,6 +471,9 @@ which synkro
 
 # Probar agregar
 ./synkro add --title "Test MCP" --content "Probando conexión MCP" --type note
+
+# Probar eliminar
+./synkro delete <id>
 ```
 
 ## 🚨 Problemas Comunes

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -58,7 +59,39 @@ func TestLoad_EnvOverrides(t *testing.T) {
 	assert.Equal(t, 100, cfg.LastUpdateCheck)
 }
 
-func TestLoad_FromFile(t *testing.T) {
+func TestLoad_FromJSONFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	configDir := filepath.Join(tmpDir, ".synkro")
+	configPath := filepath.Join(configDir, "config.json")
+
+	err := os.MkdirAll(configDir, 0755)
+	require.NoError(t, err)
+
+	fileCfg := Config{
+		DatabasePath: "file.db",
+		MaxTokens:    6000,
+		ModelType:    "onnx",
+		configPath:   configPath,
+	}
+	data, _ := json.MarshalIndent(fileCfg, "", "  ")
+	err = os.WriteFile(configPath, append(data, '\n'), 0644)
+	require.NoError(t, err)
+
+	t.Setenv("SYNKRO_DB_PATH", "")
+	t.Setenv("SYNKRO_MAX_TOKENS", "")
+	t.Setenv("SYNKRO_MODEL_TYPE", "")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+
+	if cfg.configPath == configPath {
+		assert.Equal(t, "file.db", cfg.DatabasePath)
+		assert.Equal(t, 6000, cfg.MaxTokens)
+		assert.Equal(t, "onnx", cfg.ModelType)
+	}
+}
+
+func TestLoad_FromKeyValueFile_MigratesToJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	configDir := filepath.Join(tmpDir, ".synkro")
 	configPath := filepath.Join(configDir, "config.json")
@@ -81,6 +114,10 @@ func TestLoad_FromFile(t *testing.T) {
 		assert.Equal(t, "file.db", cfg.DatabasePath)
 		assert.Equal(t, 6000, cfg.MaxTokens)
 		assert.Equal(t, "onnx", cfg.ModelType)
+
+		migratedData, err := os.ReadFile(configPath)
+		require.NoError(t, err)
+		assert.True(t, json.Valid(migratedData), "config should be migrated to JSON")
 	}
 }
 
@@ -92,8 +129,8 @@ func TestLoad_InvalidFileValues(t *testing.T) {
 	err := os.MkdirAll(configDir, 0755)
 	require.NoError(t, err)
 
-	content := "SYNKRO_MAX_TOKENS=notanumber\nSYNKRO_SIMILARITY_THRESHOLD=invalid\n"
-	err = os.WriteFile(configPath, []byte(content), 0644)
+	invalidJSON := `{ "max_tokens": "notanumber" }`
+	err = os.WriteFile(configPath, []byte(invalidJSON), 0644)
 	require.NoError(t, err)
 
 	t.Setenv("SYNKRO_MAX_TOKENS", "")
@@ -108,32 +145,7 @@ func TestLoad_InvalidFileValues(t *testing.T) {
 	}
 }
 
-func TestSave_Defaults(t *testing.T) {
-	tmpDir := t.TempDir()
-	cfg := &Config{
-		DatabasePath:        "memory.db",
-		Debug:               false,
-		MaxTokens:           4000,
-		SessionBuffer:       20,
-		CacheSize:           1000,
-		SimilarityThreshold: 0.5,
-		EmbeddingDim:        384,
-		ModelType:           "tfidf",
-		AutoUpdateCheck:     true,
-		CheckUpdateOnStart:  true,
-		LastUpdateCheck:     0,
-		configPath:          filepath.Join(tmpDir, "config.json"),
-	}
-
-	err := Save(cfg)
-	require.NoError(t, err)
-
-	data, err := os.ReadFile(cfg.configPath)
-	require.NoError(t, err)
-	assert.Empty(t, string(data))
-}
-
-func TestSave_NonDefaults(t *testing.T) {
+func TestSave_WritesJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := &Config{
 		DatabasePath:        "custom.db",
@@ -155,17 +167,73 @@ func TestSave_NonDefaults(t *testing.T) {
 
 	data, err := os.ReadFile(cfg.configPath)
 	require.NoError(t, err)
-	content := string(data)
-	assert.Contains(t, content, "SYNKRO_DB_PATH=custom.db")
-	assert.Contains(t, content, "SYNKRO_DEBUG=true")
-	assert.Contains(t, content, "SYNKRO_MAX_TOKENS=8000")
-	assert.Contains(t, content, "SYNKRO_MODEL_TYPE=onnx")
-	assert.Contains(t, content, "SYNKRO_AUTO_UPDATE=false")
-	assert.Contains(t, content, "SYNKRO_LAST_UPDATE_CHECK=100")
+	assert.True(t, json.Valid(data), "saved config must be valid JSON")
+
+	var loaded Config
+	err = json.Unmarshal(data, &loaded)
+	require.NoError(t, err)
+	assert.Equal(t, "custom.db", loaded.DatabasePath)
+	assert.True(t, loaded.Debug)
+	assert.Equal(t, 8000, loaded.MaxTokens)
+	assert.Equal(t, "onnx", loaded.ModelType)
+	assert.False(t, loaded.AutoUpdateCheck)
+	assert.Equal(t, 100, loaded.LastUpdateCheck)
+}
+
+func TestSave_RoundTrip(t *testing.T) {
+	tmpDir := t.TempDir()
+	original := &Config{
+		DatabasePath:        "test.db",
+		Debug:               true,
+		MaxTokens:           2000,
+		SessionBuffer:       10,
+		CacheSize:           500,
+		SimilarityThreshold: 0.7,
+		EmbeddingDim:        512,
+		ModelType:           "onnx",
+		AutoUpdateCheck:     false,
+		CheckUpdateOnStart:  false,
+		LastUpdateCheck:     42,
+		configPath:          filepath.Join(tmpDir, "config.json"),
+	}
+
+	err := Save(original)
+	require.NoError(t, err)
+
+	reloaded := &Config{configPath: original.configPath}
+	reloaded.loadFromFile()
+
+	assert.Equal(t, original.DatabasePath, reloaded.DatabasePath)
+	assert.Equal(t, original.Debug, reloaded.Debug)
+	assert.Equal(t, original.MaxTokens, reloaded.MaxTokens)
+	assert.Equal(t, original.SessionBuffer, reloaded.SessionBuffer)
+	assert.Equal(t, original.CacheSize, reloaded.CacheSize)
+	assert.Equal(t, original.SimilarityThreshold, reloaded.SimilarityThreshold)
+	assert.Equal(t, original.EmbeddingDim, reloaded.EmbeddingDim)
+	assert.Equal(t, original.ModelType, reloaded.ModelType)
+	assert.Equal(t, original.AutoUpdateCheck, reloaded.AutoUpdateCheck)
+	assert.Equal(t, original.CheckUpdateOnStart, reloaded.CheckUpdateOnStart)
+	assert.Equal(t, original.LastUpdateCheck, reloaded.LastUpdateCheck)
 }
 
 func TestLoad_MissingFile(t *testing.T) {
 	cfg := &Config{configPath: "/nonexistent/path/config.json"}
 	cfg.loadFromFile()
 	assert.Equal(t, "", cfg.DatabasePath)
+}
+
+func TestConfigPathFieldNotSerialized(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &Config{
+		DatabasePath: "test.db",
+		configPath:   filepath.Join(tmpDir, "config.json"),
+	}
+
+	err := Save(cfg)
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(cfg.configPath)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "configPath")
+	assert.NotContains(t, string(data), "config_path")
 }

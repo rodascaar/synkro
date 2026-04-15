@@ -43,11 +43,6 @@ func (s *Server) Run(ctx context.Context) error {
 
 	s.server = server
 
-	SetGlobalRepo(s.repo)
-	SetGraph(s.graph)
-	SetSessionTracker(s.sessionTracker)
-	SetContextPruner(s.contextPruner)
-
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "add_memory",
 		Description: "Add a new memory to Synkro",
@@ -315,14 +310,6 @@ func (s *Server) Run(ctx context.Context) error {
 	return server.Run(ctx, &mcp.StdioTransport{})
 }
 
-type AddMemoryArgs struct {
-	Type    string   `json:"type" jsonschema:"Memory type (note, decision, task, context)"`
-	Title   string   `json:"title" jsonschema:"Memory title (required)"`
-	Content string   `json:"content" jsonschema:"Memory content"`
-	Source  string   `json:"source" jsonschema:"Source of the memory"`
-	Tags    []string `json:"tags" jsonschema:"Tags for the memory"`
-}
-
 func (s *Server) handleAddMemory(ctx context.Context, req *mcp.CallToolRequest, args AddMemoryArgs) (*mcp.CallToolResult, any, error) {
 	input := AddMemoryInput{
 		Type:    args.Type,
@@ -332,23 +319,9 @@ func (s *Server) handleAddMemory(ctx context.Context, req *mcp.CallToolRequest, 
 		Tags:    args.Tags,
 	}
 
-	if input.Title == "" {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Error: title is required"},
-			},
-			IsError: true,
-		}, nil, nil
-	}
-
-	resultData, err := AddMemory(input)
+	resultData, err := s.AddMemory(ctx, input)
 	if err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Error: " + err.Error()},
-			},
-			IsError: true,
-		}, nil, nil
+		return errorResult(err), nil, nil
 	}
 
 	return &mcp.CallToolResult{
@@ -358,20 +331,10 @@ func (s *Server) handleAddMemory(ctx context.Context, req *mcp.CallToolRequest, 
 	}, nil, nil
 }
 
-type GetMemoryArgs struct {
-	ID string `json:"id" jsonschema:"Memory ID (required)"`
-}
-
 func (s *Server) handleGetMemory(ctx context.Context, req *mcp.CallToolRequest, args GetMemoryArgs) (*mcp.CallToolResult, any, error) {
-	input := GetMemoryInput{ID: args.ID}
 	buf := &BufferWriter{}
-	if err := GetMemory(input, buf); err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Error: " + err.Error()},
-			},
-			IsError: true,
-		}, nil, nil
+	if err := s.GetMemory(ctx, GetMemoryInput{ID: args.ID}, buf); err != nil {
+		return errorResult(err), nil, nil
 	}
 
 	return &mcp.CallToolResult{
@@ -379,6 +342,175 @@ func (s *Server) handleGetMemory(ctx context.Context, req *mcp.CallToolRequest, 
 			&mcp.TextContent{Text: buf.String()},
 		},
 	}, nil, nil
+}
+
+func (s *Server) handleListMemory(ctx context.Context, req *mcp.CallToolRequest, args ListMemoryArgs) (*mcp.CallToolResult, any, error) {
+	buf := &BufferWriter{}
+	if err := s.ListMemory(ctx, ListMemoryInput{
+		Type:   args.Type,
+		Status: args.Status,
+		Limit:  args.Limit,
+	}, buf); err != nil {
+		return errorResult(err), nil, nil
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: buf.String()},
+		},
+	}, nil, nil
+}
+
+func (s *Server) handleSearchMemory(ctx context.Context, req *mcp.CallToolRequest, args SearchMemoryArgs) (*mcp.CallToolResult, any, error) {
+	buf := &BufferWriter{}
+	if err := s.SearchMemory(ctx, SearchMemoryInput{
+		Query:  args.Query,
+		Type:   args.Type,
+		Status: args.Status,
+		Limit:  args.Limit,
+	}, buf); err != nil {
+		return errorResult(err), nil, nil
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: buf.String()},
+		},
+	}, nil, nil
+}
+
+func (s *Server) handleUpdateMemory(ctx context.Context, req *mcp.CallToolRequest, args UpdateMemoryArgs) (*mcp.CallToolResult, any, error) {
+	buf := &BufferWriter{}
+	if err := s.UpdateMemory(ctx, UpdateMemoryInput{
+		ID:      args.ID,
+		Title:   args.Title,
+		Content: args.Content,
+		Status:  args.Status,
+		Tags:    args.Tags,
+	}, buf); err != nil {
+		return errorResult(err), nil, nil
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: buf.String()},
+		},
+	}, nil, nil
+}
+
+func (s *Server) handleArchiveMemory(ctx context.Context, req *mcp.CallToolRequest, args ArchiveMemoryArgs) (*mcp.CallToolResult, any, error) {
+	buf := &BufferWriter{}
+	if err := s.ArchiveMemory(ctx, ArchiveMemoryInput{ID: args.ID}, buf); err != nil {
+		return errorResult(err), nil, nil
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: buf.String()},
+		},
+	}, nil, nil
+}
+
+func (s *Server) handleActivateContext(ctx context.Context, req *mcp.CallToolRequest, args ActivateContextArgs) (*mcp.CallToolResult, any, error) {
+	buf := &BufferWriter{}
+	if err := s.ActivateContext(ctx, ActivateContextInput{
+		Query:     args.Query,
+		SessionID: args.SessionID,
+		MaxTokens: args.MaxTokens,
+		Limit:     args.Limit,
+	}, buf); err != nil {
+		return errorResult(err), nil, nil
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: buf.String()},
+		},
+	}, nil, nil
+}
+
+func (s *Server) handleAddRelation(ctx context.Context, req *mcp.CallToolRequest, args AddRelationArgs) (*mcp.CallToolResult, any, error) {
+	buf := &BufferWriter{}
+	if err := s.AddRelation(ctx, AddRelationInput{
+		SourceID: args.SourceID,
+		TargetID: args.TargetID,
+		Type:     args.Type,
+		Strength: args.Strength,
+	}, buf); err != nil {
+		return errorResult(err), nil, nil
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: buf.String()},
+		},
+	}, nil, nil
+}
+
+func (s *Server) handleGetRelations(ctx context.Context, req *mcp.CallToolRequest, args GetRelationsArgs) (*mcp.CallToolResult, any, error) {
+	buf := &BufferWriter{}
+	if err := s.GetRelations(ctx, GetRelationsInput{MemoryID: args.MemoryID}, buf); err != nil {
+		return errorResult(err), nil, nil
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: buf.String()},
+		},
+	}, nil, nil
+}
+
+func (s *Server) handleDeleteRelation(ctx context.Context, req *mcp.CallToolRequest, args DeleteRelationArgs) (*mcp.CallToolResult, any, error) {
+	buf := &BufferWriter{}
+	if err := s.DeleteRelation(ctx, DeleteRelationInput{
+		SourceID: args.SourceID,
+		TargetID: args.TargetID,
+	}, buf); err != nil {
+		return errorResult(err), nil, nil
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: buf.String()},
+		},
+	}, nil, nil
+}
+
+func (s *Server) handleFindPath(ctx context.Context, req *mcp.CallToolRequest, args FindPathArgs) (*mcp.CallToolResult, any, error) {
+	buf := &BufferWriter{}
+	if err := s.FindPath(ctx, FindPathInput{
+		FromID: args.FromID,
+		ToID:   args.ToID,
+	}, buf); err != nil {
+		return errorResult(err), nil, nil
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: buf.String()},
+		},
+	}, nil, nil
+}
+
+func errorResult(err error) *mcp.CallToolResult {
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: err.Error()},
+		},
+		IsError: true,
+	}
+}
+
+type AddMemoryArgs struct {
+	Type    string   `json:"type" jsonschema:"Memory type (note, decision, task, context)"`
+	Title   string   `json:"title" jsonschema:"Memory title (required)"`
+	Content string   `json:"content" jsonschema:"Memory content"`
+	Source  string   `json:"source" jsonschema:"Source of the memory"`
+	Tags    []string `json:"tags" jsonschema:"Tags for the memory"`
+}
+
+type GetMemoryArgs struct {
+	ID string `json:"id" jsonschema:"Memory ID (required)"`
 }
 
 type ListMemoryArgs struct {
@@ -387,68 +519,11 @@ type ListMemoryArgs struct {
 	Limit  int    `json:"limit" jsonschema:"Maximum number of results"`
 }
 
-func (s *Server) handleListMemory(ctx context.Context, req *mcp.CallToolRequest, args ListMemoryArgs) (*mcp.CallToolResult, any, error) {
-	input := ListMemoryInput{
-		Type:   args.Type,
-		Status: args.Status,
-		Limit:  args.Limit,
-	}
-	buf := &BufferWriter{}
-	if err := ListMemory(input, buf); err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Error: " + err.Error()},
-			},
-			IsError: true,
-		}, nil, nil
-	}
-
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: buf.String()},
-		},
-	}, nil, nil
-}
-
 type SearchMemoryArgs struct {
 	Query  string `json:"query" jsonschema:"Search query (required)"`
 	Type   string `json:"type" jsonschema:"Filter by memory type"`
 	Status string `json:"status" jsonschema:"Filter by status (active, archived)"`
 	Limit  int    `json:"limit" jsonschema:"Maximum number of results"`
-}
-
-func (s *Server) handleSearchMemory(ctx context.Context, req *mcp.CallToolRequest, args SearchMemoryArgs) (*mcp.CallToolResult, any, error) {
-	input := SearchMemoryInput{
-		Query:  args.Query,
-		Type:   args.Type,
-		Status: args.Status,
-		Limit:  args.Limit,
-	}
-
-	if input.Query == "" {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Error: query is required"},
-			},
-			IsError: true,
-		}, nil, nil
-	}
-
-	buf := &BufferWriter{}
-	if err := SearchMemory(input, buf); err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Error: " + err.Error()},
-			},
-			IsError: true,
-		}, nil, nil
-	}
-
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: buf.String()},
-		},
-	}, nil, nil
 }
 
 type UpdateMemoryArgs struct {
@@ -459,72 +534,8 @@ type UpdateMemoryArgs struct {
 	Tags    []string `json:"tags" jsonschema:"New tags"`
 }
 
-func (s *Server) handleUpdateMemory(ctx context.Context, req *mcp.CallToolRequest, args UpdateMemoryArgs) (*mcp.CallToolResult, any, error) {
-	input := UpdateMemoryInput{
-		ID:      args.ID,
-		Title:   args.Title,
-		Content: args.Content,
-		Status:  args.Status,
-		Tags:    args.Tags,
-	}
-
-	if input.ID == "" {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Error: id is required"},
-			},
-			IsError: true,
-		}, nil, nil
-	}
-
-	buf := &BufferWriter{}
-	if err := UpdateMemory(input, buf); err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Error: " + err.Error()},
-			},
-			IsError: true,
-		}, nil, nil
-	}
-
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: buf.String()},
-		},
-	}, nil, nil
-}
-
 type ArchiveMemoryArgs struct {
 	ID string `json:"id" jsonschema:"Memory ID (required)"`
-}
-
-func (s *Server) handleArchiveMemory(ctx context.Context, req *mcp.CallToolRequest, args ArchiveMemoryArgs) (*mcp.CallToolResult, any, error) {
-	input := ArchiveMemoryInput{ID: args.ID}
-
-	if input.ID == "" {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Error: id is required"},
-			},
-			IsError: true,
-		}, nil, nil
-	}
-
-	buf := &BufferWriter{}
-	if err := ArchiveMemory(input, buf); err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Error: " + err.Error()},
-			},
-			IsError: true,
-		}, nil, nil
-	}
-
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: buf.String()},
-		},
-	}, nil, nil
 }
 
 type ActivateContextArgs struct {
@@ -534,38 +545,25 @@ type ActivateContextArgs struct {
 	Limit     int    `json:"limit" jsonschema:"Maximum number of results"`
 }
 
-func (s *Server) handleActivateContext(ctx context.Context, req *mcp.CallToolRequest, args ActivateContextArgs) (*mcp.CallToolResult, any, error) {
-	input := ActivateContextInput{
-		Query:     args.Query,
-		SessionID: args.SessionID,
-		MaxTokens: args.MaxTokens,
-		Limit:     args.Limit,
-	}
+type AddRelationArgs struct {
+	SourceID string  `json:"source_id" jsonschema:"Source memory ID (required)"`
+	TargetID string  `json:"target_id" jsonschema:"Target memory ID (required)"`
+	Type     string  `json:"type" jsonschema:"Relation type"`
+	Strength float64 `json:"strength" jsonschema:"Relation strength 0.0-1.0"`
+}
 
-	if input.Query == "" {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Error: query is required"},
-			},
-			IsError: true,
-		}, nil, nil
-	}
+type GetRelationsArgs struct {
+	MemoryID string `json:"memory_id" jsonschema:"Memory ID (required)"`
+}
 
-	buf := &BufferWriter{}
-	if err := ActivateContext(input, buf); err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Error: " + err.Error()},
-			},
-			IsError: true,
-		}, nil, nil
-	}
+type DeleteRelationArgs struct {
+	SourceID string `json:"source_id" jsonschema:"Source memory ID (required)"`
+	TargetID string `json:"target_id" jsonschema:"Target memory ID (required)"`
+}
 
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: buf.String()},
-		},
-	}, nil, nil
+type FindPathArgs struct {
+	FromID string `json:"from_id" jsonschema:"Source memory ID (required)"`
+	ToID   string `json:"to_id" jsonschema:"Target memory ID (required)"`
 }
 
 type BufferWriter struct {
@@ -583,116 +581,4 @@ func (b *BufferWriter) String() string {
 
 func (b *BufferWriter) Reset() {
 	b.buf = nil
-}
-
-type AddRelationArgs struct {
-	SourceID string  `json:"source_id" jsonschema:"Source memory ID (required)"`
-	TargetID string  `json:"target_id" jsonschema:"Target memory ID (required)"`
-	Type     string  `json:"type" jsonschema:"Relation type"`
-	Strength float64 `json:"strength" jsonschema:"Relation strength 0.0-1.0"`
-}
-
-func (s *Server) handleAddRelation(ctx context.Context, req *mcp.CallToolRequest, args AddRelationArgs) (*mcp.CallToolResult, any, error) {
-	input := AddRelationInput{
-		SourceID: args.SourceID,
-		TargetID: args.TargetID,
-		Type:     args.Type,
-		Strength: args.Strength,
-	}
-
-	buf := &BufferWriter{}
-	if err := AddRelationHandler(input, buf); err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: buf.String()},
-			},
-			IsError: true,
-		}, nil, nil
-	}
-
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: buf.String()},
-		},
-	}, nil, nil
-}
-
-type GetRelationsArgs struct {
-	MemoryID string `json:"memory_id" jsonschema:"Memory ID (required)"`
-}
-
-func (s *Server) handleGetRelations(ctx context.Context, req *mcp.CallToolRequest, args GetRelationsArgs) (*mcp.CallToolResult, any, error) {
-	input := GetRelationsInput{MemoryID: args.MemoryID}
-
-	buf := &BufferWriter{}
-	if err := GetRelationsHandler(input, buf); err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: buf.String()},
-			},
-			IsError: true,
-		}, nil, nil
-	}
-
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: buf.String()},
-		},
-	}, nil, nil
-}
-
-type DeleteRelationArgs struct {
-	SourceID string `json:"source_id" jsonschema:"Source memory ID (required)"`
-	TargetID string `json:"target_id" jsonschema:"Target memory ID (required)"`
-}
-
-func (s *Server) handleDeleteRelation(ctx context.Context, req *mcp.CallToolRequest, args DeleteRelationArgs) (*mcp.CallToolResult, any, error) {
-	input := DeleteRelationInput{
-		SourceID: args.SourceID,
-		TargetID: args.TargetID,
-	}
-
-	buf := &BufferWriter{}
-	if err := DeleteRelationHandler(input, buf); err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: buf.String()},
-			},
-			IsError: true,
-		}, nil, nil
-	}
-
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: buf.String()},
-		},
-	}, nil, nil
-}
-
-type FindPathArgs struct {
-	FromID string `json:"from_id" jsonschema:"Source memory ID (required)"`
-	ToID   string `json:"to_id" jsonschema:"Target memory ID (required)"`
-}
-
-func (s *Server) handleFindPath(ctx context.Context, req *mcp.CallToolRequest, args FindPathArgs) (*mcp.CallToolResult, any, error) {
-	input := FindPathInput{
-		FromID: args.FromID,
-		ToID:   args.ToID,
-	}
-
-	buf := &BufferWriter{}
-	if err := FindPathHandler(input, buf); err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: buf.String()},
-			},
-			IsError: true,
-		}, nil, nil
-	}
-
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: buf.String()},
-		},
-	}, nil, nil
 }

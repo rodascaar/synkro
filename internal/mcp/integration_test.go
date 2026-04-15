@@ -7,14 +7,13 @@ import (
 	"testing"
 
 	"github.com/rodascaar/synkro/internal/db"
-	"github.com/rodascaar/synkro/internal/graph"
 	"github.com/rodascaar/synkro/internal/mcp"
 	"github.com/rodascaar/synkro/internal/memory"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func setupTestDB(t *testing.T) *memory.Repository {
+func setupTestServer(t *testing.T) (*mcp.Server, *memory.Repository) {
 	t.Helper()
 	tmpFile := t.TempDir() + "/test.db"
 	database, err := db.New(tmpFile)
@@ -22,19 +21,16 @@ func setupTestDB(t *testing.T) *memory.Repository {
 	t.Cleanup(func() { database.Close() })
 
 	memRepo := memory.NewRepository(database.DB())
-	_ = graph.NewRepository(database.DB())
-	_ = graph.NewGraph(memRepo, nil)
+	server := mcp.NewServer(memRepo, nil, nil, nil)
 
-	return memRepo
+	return server, memRepo
 }
 
 func TestHandlers_AddAndGetMemory(t *testing.T) {
-	memRepo := setupTestDB(t)
-	mcp.SetGlobalRepo(memRepo)
-	defer mcp.SetGlobalRepo(nil)
+	server, _ := setupTestServer(t)
 
 	var buf mcp.BufferWriter
-	err := mcp.AddMemoryWithWriter(mcp.AddMemoryInput{
+	err := server.AddMemoryWithWriter(context.Background(), mcp.AddMemoryInput{
 		Type:    "note",
 		Title:   "Test Note",
 		Content: "Test content here",
@@ -51,7 +47,7 @@ func TestHandlers_AddAndGetMemory(t *testing.T) {
 	memID := response["memory_id"].(string)
 
 	buf.Reset()
-	err = mcp.GetMemory(mcp.GetMemoryInput{ID: memID}, &buf)
+	err = server.GetMemory(context.Background(), mcp.GetMemoryInput{ID: memID}, &buf)
 	require.NoError(t, err)
 
 	var getResult map[string]interface{}
@@ -63,9 +59,7 @@ func TestHandlers_AddAndGetMemory(t *testing.T) {
 }
 
 func TestHandlers_ListMemories(t *testing.T) {
-	memRepo := setupTestDB(t)
-	mcp.SetGlobalRepo(memRepo)
-	defer mcp.SetGlobalRepo(nil)
+	server, memRepo := setupTestServer(t)
 
 	for i := 0; i < 3; i++ {
 		ctx := context.Background()
@@ -79,7 +73,7 @@ func TestHandlers_ListMemories(t *testing.T) {
 	}
 
 	var buf mcp.BufferWriter
-	err := mcp.ListMemory(mcp.ListMemoryInput{Limit: 10}, &buf)
+	err := server.ListMemory(context.Background(), mcp.ListMemoryInput{Limit: 10}, &buf)
 	require.NoError(t, err)
 
 	var response map[string]interface{}
@@ -88,9 +82,7 @@ func TestHandlers_ListMemories(t *testing.T) {
 }
 
 func TestHandlers_SearchMemories(t *testing.T) {
-	memRepo := setupTestDB(t)
-	mcp.SetGlobalRepo(memRepo)
-	defer mcp.SetGlobalRepo(nil)
+	server, memRepo := setupTestServer(t)
 
 	ctx := context.Background()
 	memRepo.Create(ctx, &memory.Memory{
@@ -101,7 +93,7 @@ func TestHandlers_SearchMemories(t *testing.T) {
 	})
 
 	var buf mcp.BufferWriter
-	err := mcp.SearchMemory(mcp.SearchMemoryInput{Query: "database", Limit: 10}, &buf)
+	err := server.SearchMemory(context.Background(), mcp.SearchMemoryInput{Query: "database", Limit: 10}, &buf)
 	require.NoError(t, err)
 
 	var response map[string]interface{}
@@ -110,9 +102,7 @@ func TestHandlers_SearchMemories(t *testing.T) {
 }
 
 func TestHandlers_UpdateMemory(t *testing.T) {
-	memRepo := setupTestDB(t)
-	mcp.SetGlobalRepo(memRepo)
-	defer mcp.SetGlobalRepo(nil)
+	server, memRepo := setupTestServer(t)
 
 	ctx := context.Background()
 	mem := &memory.Memory{
@@ -121,7 +111,7 @@ func TestHandlers_UpdateMemory(t *testing.T) {
 	require.NoError(t, memRepo.Create(ctx, mem))
 
 	var buf mcp.BufferWriter
-	err := mcp.UpdateMemory(mcp.UpdateMemoryInput{
+	err := server.UpdateMemory(context.Background(), mcp.UpdateMemoryInput{
 		ID:      mem.ID,
 		Title:   "Updated",
 		Content: "New content",
@@ -138,9 +128,7 @@ func TestHandlers_UpdateMemory(t *testing.T) {
 }
 
 func TestHandlers_ArchiveMemory(t *testing.T) {
-	memRepo := setupTestDB(t)
-	mcp.SetGlobalRepo(memRepo)
-	defer mcp.SetGlobalRepo(nil)
+	server, memRepo := setupTestServer(t)
 
 	ctx := context.Background()
 	mem := &memory.Memory{
@@ -149,7 +137,7 @@ func TestHandlers_ArchiveMemory(t *testing.T) {
 	require.NoError(t, memRepo.Create(ctx, mem))
 
 	var buf mcp.BufferWriter
-	err := mcp.ArchiveMemory(mcp.ArchiveMemoryInput{ID: mem.ID}, &buf)
+	err := server.ArchiveMemory(context.Background(), mcp.ArchiveMemoryInput{ID: mem.ID}, &buf)
 	require.NoError(t, err)
 
 	archived, err := memRepo.Get(ctx, mem.ID)
@@ -158,29 +146,19 @@ func TestHandlers_ArchiveMemory(t *testing.T) {
 }
 
 func TestHandlers_GetMemory_NotFound(t *testing.T) {
-	memRepo := setupTestDB(t)
-	mcp.SetGlobalRepo(memRepo)
-	defer mcp.SetGlobalRepo(nil)
+	server, _ := setupTestServer(t)
 
 	var buf mcp.BufferWriter
-	err := mcp.GetMemory(mcp.GetMemoryInput{ID: "nonexistent"}, &buf)
-	assert.NoError(t, err)
-	assert.True(t, strings.Contains(buf.String(), "not found"))
+	err := server.GetMemory(context.Background(), mcp.GetMemoryInput{ID: "nonexistent"}, &buf)
+	assert.Error(t, err)
+	assert.True(t, strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "MEM_NOT_FOUND"))
 }
 
 func TestHandlers_ActivateContext_Empty(t *testing.T) {
-	memRepo := setupTestDB(t)
-	mcp.SetGlobalRepo(memRepo)
-	mcp.SetSessionTracker(nil)
-	mcp.SetContextPruner(nil)
-	defer func() {
-		mcp.SetGlobalRepo(nil)
-		mcp.SetSessionTracker(nil)
-		mcp.SetContextPruner(nil)
-	}()
+	server, _ := setupTestServer(t)
 
 	var buf mcp.BufferWriter
-	err := mcp.ActivateContext(mcp.ActivateContextInput{
+	err := server.ActivateContext(context.Background(), mcp.ActivateContextInput{
 		Query:     "nonexistent query that matches nothing",
 		SessionID: "test-session",
 	}, &buf)

@@ -3,7 +3,7 @@
 > **Motor de Contexto Inteligente para LLMs** - Sistema de memoria con embeddings, grafo de relaciones y pruning inteligente
 
 ![Version](https://img.shields.io/badge/version-2.0-blue)
-![Go](https://img.shields.io/badge/Go-1.22+-00ADD8E)
+![Go](https://img.shields.io/badge/Go-1.24+-00ADD8E)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 Synkro es una herramienta de gestión de memoria portable que funciona como una **extensión de memoria RAM para LLMs**, con:
@@ -117,11 +117,17 @@ recentDeliveries := session.GetRecentDeliveries(sessionID, 20)
 synkro/
 ├── cmd/synkro/
 │   ├── main.go
-│   └── commands.go (CLI commands with Cobra)
+│   ├── commands.go (CLI commands with Cobra)
+│   ├── update.go (Auto-update with SHA256)
+│   └── health.go (Health check)
 ├── internal/
 │   ├── db/
 │   │   ├── db.go (Database wrapper + schema)
+│   │   ├── migrations.go (Migration system)
+│   │   ├── vector.go (sqlite-vec operations)
 │   │   └── extensions/ (sqlite-vec por plataforma)
+│   ├── errors/
+│   │   └── errors.go (Synkro error types)
 │   ├── embeddings/
 │   │   ├── generator.go (TF-IDF + N-grams)
 │   │   └── manager.go (Embedding manager con MiniLM support)
@@ -135,7 +141,7 @@ synkro/
 │   ├── session/
 │   │   └── tracker.go (Ring buffer, duplicate detection)
 │   ├── mcp/
-│   │   └── handlers.go (MCP handlers con similarity scores)
+│   │   └── handlers.go (MCP Server methods, no globals)
 │   └── tui/
 │       ├── model.go (Bubble Tea model - TUI profesional)
 │       └── tui.go (Simple TUI - backup)
@@ -297,19 +303,12 @@ go build -o synkro ./cmd/synkro/
 ./synkro tui
 ```
 
-### Test de TUI
-
-```bash
-bash test-tui-complete.sh
-```
-
 ## 📝 Documentación
 
 - [README.md](./README.md) - Documentación principal
 - [INSTALL.md](./INSTALL.md) - Guía de instalación MCP
 - [EMBEDDINGS.md](./EMBEDDINGS.md) - Modelos de embeddings
 - [TUI.md](./TUI.md) - Guía de la TUI profesional
-- [TUI_FIXES.md](./TUI_FIXES.md) - Guía de pruebas de TUI
 - [AGENTS.md](./AGENTS.md) - Guía para agentes de IA
 
 ## 🤝 Contribuciones

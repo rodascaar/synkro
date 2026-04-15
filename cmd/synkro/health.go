@@ -14,6 +14,7 @@ import (
 	"github.com/rodascaar/synkro/internal/pruner"
 	"github.com/rodascaar/synkro/internal/session"
 	"github.com/spf13/cobra"
+	"go/version"
 )
 
 var healthCmd = &cobra.Command{
@@ -38,13 +39,16 @@ var healthCmd = &cobra.Command{
 		}
 
 		// Check 2: Go Version
-		fmt.Println("\n🐹 Go Version:")
+		fmt.Println("\nGo Version:")
 		fmt.Printf("  %s\n", runtime.Version())
-		if strings.Contains(runtime.Version(), "go1.25") || strings.Contains(runtime.Version(), "go1.26") {
-			fmt.Println("  ✅ Go 1.25+ detected")
-		} else {
-			fmt.Println("  ⚠️  Go version may be incompatible with MCP SDK")
+		if !version.IsValid(runtime.Version()) {
+			fmt.Println("  Warning: could not parse Go version")
 			allOK = false
+		} else if version.Compare(runtime.Version(), "go1.24.0") < 0 {
+			fmt.Println("  Warning: Go version is below minimum 1.24.0")
+			allOK = false
+		} else {
+			fmt.Println("  OK")
 		}
 
 		// Check 3: CGO

@@ -39,6 +39,10 @@ func New(path string) (*Database, error) {
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
+	if err := database.runMigrations(); err != nil {
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
+	}
+
 	return database, nil
 }
 
@@ -126,6 +130,15 @@ func (d *Database) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_session_memories_session ON session_memories(session_id);
 	CREATE INDEX IF NOT EXISTS idx_session_memories_delivered ON session_memories(delivered_at DESC);
 	CREATE INDEX IF NOT EXISTS idx_embedding_cache_hash ON embedding_cache(text_hash);
+
+	CREATE TABLE IF NOT EXISTS memory_tags (
+		memory_id TEXT NOT NULL,
+		tag TEXT NOT NULL,
+		PRIMARY KEY (memory_id, tag),
+		FOREIGN KEY (memory_id) REFERENCES memories(id) ON DELETE CASCADE
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_memory_tags_tag ON memory_tags(tag);
 	`
 
 	_, err := d.db.Exec(schema)

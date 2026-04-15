@@ -3,7 +3,7 @@
 > **Motor de Contexto Inteligente para LLMs**
 
 ![Version](https://img.shields.io/badge/version-2.0-blue)
-![Go](https://img.shields.io/badge/Go-1.22+-00ADD8E)
+![Go](https://img.shields.io/badge/Go-1.24+-00ADD8E)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 Sistema de gestión de memoria con embeddings, grafo de relaciones y pruning inteligente.
@@ -27,6 +27,7 @@ irm https://raw.githubusercontent.com/rodascaar/synkro/main/install.ps1 | iex
 ./synkro add            # Add memory
 ./synkro list           # List
 ./synkro search         # Search
+./synkro delete <id>    # Delete memory
 ./synkro model list     # List embedding models
 ./synkro tui            # Professional TUI
 ./synkro mcp            # MCP server
