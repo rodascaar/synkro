@@ -75,17 +75,19 @@ jobs:
         shell: bash
         run: |
           choco install mingw -y --no-progress
-          echo "CC=gcc" >> "$GITHUB_ENV"
-          echo "CGO_ENABLED=1" >> "$GITHUB_ENV"
           curl -sL https://www.sqlite.org/2024/sqlite-amalgamation-3450000.zip -o sqlite3.zip
           unzip -q sqlite3.zip
-          echo "CGO_CFLAGS=-I${{ github.workspace }}/sqlite3-3450000" >> "$GITHUB_ENV"
+          ls sqlite3-3450000/sqlite3.h || (echo "ERROR: sqlite3.h not found after download" && exit 1)
 
       - name: Build binary
         shell: bash
-        env:
-          CGO_ENABLED: 1
         run: |
+          export CGO_ENABLED=1
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            export CC=gcc
+            export CGO_CFLAGS="-I${{ github.workspace }}/sqlite3-3450000"
+          fi
+
           echo "Building ${{ matrix.artifact_name }}..."
 
           go build -v \
