@@ -66,7 +66,7 @@ memory.db           # SQLite database (created by init)
 - **Embeddings**: 384-dim vectors using TF-IDF + N-grams with stopwords filtering, persistent cache in SQLite
 - **ONNX Models**: Support for high-quality sentence-transformers models (all-MiniLM-L6-v2, paraphrase-multilingual-MiniLM-L12-v2, stsb-roberta-base-v2) with automatic download from Hugging Face
 - **MCP Server**: Fully implemented using github.com/modelcontextprotocol/go-sdk
-- **Testing**: Comprehensive test suite with >90% coverage
+- **Testing**: Comprehensive test suite with ~70%+ coverage
 - **Linting**: golangci-lint configured with essential linters
 
 ## Architecture
@@ -149,6 +149,9 @@ make bench        # Benchmarks
 
 # Run linter
 make lint
+
+# Run vulnerability check
+go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 ```
 
 ## MCP Server

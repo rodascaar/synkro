@@ -186,3 +186,54 @@ func TestAddModel_Update(t *testing.T) {
 	newModel, _ = newModel.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	assert.NotNil(t, newModel)
 }
+
+func TestModel_View_WithTags(t *testing.T) {
+	repo, cleanup := setupTestTUI(t)
+	defer cleanup()
+
+	mem := &memory.Memory{
+		Type:    "note",
+		Title:   "Tagged Memory",
+		Content: "Content with tags",
+		Source:  "test",
+		Status:  "active",
+		Tags:    []string{"go", "testing", "tui"},
+	}
+	require.NoError(t, repo.Create(context.Background(), mem))
+
+	model := tui.InitialModel(repo, nil)
+	cmd := model.Init()
+	assert.NotNil(t, cmd)
+
+	loadedModel, _ := model.Update(cmd())
+	_, _ = loadedModel.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	view := loadedModel.View()
+	assert.Contains(t, view, "Tagged Memory")
+}
+
+func TestModel_View_RenderContent(t *testing.T) {
+	repo, cleanup := setupTestTUI(t)
+	defer cleanup()
+
+	mem := &memory.Memory{
+		Type:    "decision",
+		Title:   "Architecture Decision",
+		Content: "We decided to use SQLite for local storage because it's simple and requires no server.",
+		Source:  "team-meeting",
+		Status:  "active",
+	}
+	require.NoError(t, repo.Create(context.Background(), mem))
+
+	model := tui.InitialModel(repo, nil)
+	cmd := model.Init()
+	assert.NotNil(t, cmd)
+
+	loadedModel, _ := model.Update(cmd())
+	_, _ = loadedModel.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	view := loadedModel.View()
+	assert.Contains(t, view, "Architecture Decision")
+	assert.Contains(t, view, "DETAILS")
+	assert.Contains(t, view, "decision")
+}

@@ -95,6 +95,18 @@ func (s *Server) AddMemoryWithWriter(ctx context.Context, input AddMemoryInput, 
 		)
 	}
 
+	validTypes := map[string]bool{
+		"note": true, "decision": true, "task": true, "context": true,
+	}
+	if input.Type != "" && !validTypes[input.Type] {
+		return synkroerrors.Wrap(
+			fmt.Errorf("invalid type %q, must be one of: note, decision, task, context", input.Type),
+			synkroerrors.ErrInvalidInput.Code,
+			synkroerrors.ErrInvalidInput.Message,
+			synkroerrors.ErrInvalidInput.Help,
+		)
+	}
+
 	mem := &memory.Memory{
 		Type:    input.Type,
 		Title:   input.Title,
@@ -115,9 +127,7 @@ func (s *Server) AddMemoryWithWriter(ctx context.Context, input AddMemoryInput, 
 		"embedding_used":   "tfidf",
 	}
 
-	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
-	return nil
+	return writeJSON(w, response)
 }
 
 func (s *Server) GetMemory(ctx context.Context, input GetMemoryInput, w io.Writer) error {
@@ -169,9 +179,7 @@ func (s *Server) GetMemory(ctx context.Context, input GetMemoryInput, w io.Write
 		"relations": relations,
 	}
 
-	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
-	return nil
+	return writeJSON(w, response)
 }
 
 func (s *Server) ListMemory(ctx context.Context, input ListMemoryInput, w io.Writer) error {
@@ -192,9 +200,7 @@ func (s *Server) ListMemory(ctx context.Context, input ListMemoryInput, w io.Wri
 		"timestamp": time.Now().Format(time.RFC3339),
 	}
 
-	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
-	return nil
+	return writeJSON(w, response)
 }
 
 func (s *Server) SearchMemory(ctx context.Context, input SearchMemoryInput, w io.Writer) error {
@@ -225,9 +231,7 @@ func (s *Server) SearchMemory(ctx context.Context, input SearchMemoryInput, w io
 		"timestamp": time.Now().Format(time.RFC3339),
 	}
 
-	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
-	return nil
+	return writeJSON(w, response)
 }
 
 func (s *Server) UpdateMemory(ctx context.Context, input UpdateMemoryInput, w io.Writer) error {
@@ -265,9 +269,7 @@ func (s *Server) UpdateMemory(ctx context.Context, input UpdateMemoryInput, w io
 		"updated_at": time.Now().Format(time.RFC3339),
 	}
 
-	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
-	return nil
+	return writeJSON(w, response)
 }
 
 func (s *Server) ArchiveMemory(ctx context.Context, input ArchiveMemoryInput, w io.Writer) error {
@@ -294,9 +296,7 @@ func (s *Server) ArchiveMemory(ctx context.Context, input ArchiveMemoryInput, w 
 		"archived_at": time.Now().Format(time.RFC3339),
 	}
 
-	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
-	return nil
+	return writeJSON(w, response)
 }
 
 func (s *Server) ActivateContext(ctx context.Context, input ActivateContextInput, w io.Writer) error {
@@ -348,9 +348,7 @@ func (s *Server) ActivateContext(ctx context.Context, input ActivateContextInput
 			"warning":              "No memories found matching query",
 		}
 
-		jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-		_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
-		return nil
+		return writeJSON(w, response)
 	}
 
 	maxSimilarity := results[0].VectorScore
@@ -366,9 +364,7 @@ func (s *Server) ActivateContext(ctx context.Context, input ActivateContextInput
 			"warning":              "Low similarity - results may not be relevant",
 		}
 
-		jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-		_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
-		return nil
+		return writeJSON(w, response)
 	}
 
 	var prioritized []*memory.HybridSearchResult
@@ -418,11 +414,9 @@ func (s *Server) ActivateContext(ctx context.Context, input ActivateContextInput
 		s.sessionTracker.UpdateLastQuery(ctx, input.SessionID, input.Query)
 	}
 
-	jsonResponse, err := json.MarshalIndent(response, "", "  ")
-	if err != nil {
+	if err := writeJSON(w, response); err != nil {
 		return synkroerrors.Wrap(err, "MARSHAL_ERROR", "Error marshaling response", "Please report this issue")
 	}
-	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
 	return nil
 }
 
@@ -481,9 +475,7 @@ func (s *Server) AddRelation(ctx context.Context, input AddRelationInput, w io.W
 		"strength":  input.Strength,
 	}
 
-	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
-	return nil
+	return writeJSON(w, response)
 }
 
 func (s *Server) GetRelations(ctx context.Context, input GetRelationsInput, w io.Writer) error {
@@ -516,9 +508,7 @@ func (s *Server) GetRelations(ctx context.Context, input GetRelationsInput, w io
 		"count":     len(relations),
 	}
 
-	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
-	return nil
+	return writeJSON(w, response)
 }
 
 func (s *Server) DeleteRelation(ctx context.Context, input DeleteRelationInput, w io.Writer) error {
@@ -550,9 +540,7 @@ func (s *Server) DeleteRelation(ctx context.Context, input DeleteRelationInput, 
 		"target_id": input.TargetID,
 	}
 
-	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
-	return nil
+	return writeJSON(w, response)
 }
 
 func (s *Server) FindPath(ctx context.Context, input FindPathInput, w io.Writer) error {
@@ -582,9 +570,7 @@ func (s *Server) FindPath(ctx context.Context, input FindPathInput, w io.Writer)
 			"from_id": input.FromID,
 			"to_id":   input.ToID,
 		}
-		jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-		_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
-		return nil
+		return writeJSON(w, response)
 	}
 
 	response := map[string]interface{}{
@@ -595,9 +581,7 @@ func (s *Server) FindPath(ctx context.Context, input FindPathInput, w io.Writer)
 		"length":  len(path),
 	}
 
-	jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-	_, _ = fmt.Fprintf(w, "%s\n", jsonResponse)
-	return nil
+	return writeJSON(w, response)
 }
 
 type ActivateContextResponse struct {
@@ -673,4 +657,13 @@ func getConfidenceLevel(similarity float64) string {
 	} else {
 		return "low"
 	}
+}
+
+func writeJSON(w io.Writer, v interface{}) error {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(w, "%s\n", data)
+	return err
 }

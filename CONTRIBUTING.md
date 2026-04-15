@@ -1,136 +1,99 @@
 # Contributing to Synkro
 
-Gracias por tu interés en contribuir a Synkro! Este documento te guiará a través del proceso de contribución.
+Thanks for your interest in contributing to Synkro! This guide covers the contribution process.
 
-## Desarrollo
+## Development
 
-### Prerrequisitos
+### Prerequisites
 
-- Go 1.25 o superior
-- SQLite3 con soporte FTS5
-- golangci-lint (instalado con `make deps`)
+- Go 1.24+
+- SQLite3 with FTS5 support
+- CGO enabled (required for SQLite)
 
-### Configuración del Entorno
+### Setup
 
 ```bash
-# Clonar el repositorio
 git clone https://github.com/rodascaar/synkro.git
 cd synkro
-
-# Instalar dependencias de desarrollo
-make deps
-
-# Inicializar base de datos para pruebas
+go mod download
 ./synkro init
 ```
 
-### Ejecutar Tests
+### Running Tests
 
 ```bash
-# Ejecutar todos los tests
-make test
-
-# Ejecutar tests rápidos
-make test-short
-
-# Ejecutar benchmarks
-make bench
+make test          # Run all tests
+make test-short    # Quick tests
+make test-coverage # Tests with coverage report
+make bench         # Benchmarks
 ```
 
-### Ejecutar Linter
+### Linting
 
 ```bash
-# Ejecutar linter
-make lint
-
-# Ejecutar linter con auto-fix
-make lint-fix
-```
-
-### Formatear Código
-
-```bash
-# Formatear código
-make fmt
+make lint       # Run golangci-lint
+make fmt        # Format code
 ```
 
 ### CI/CD
 
-El proyecto usa GitHub Actions para CI/CD. Los tests y linters se ejecutan automáticamente en cada push y PR.
+GitHub Actions runs tests, linting, and vulnerability scanning (`govulncheck`) on every push and PR.
 
-## Estructura del Proyecto
+## Project Structure
 
 ```
 cmd/synkro/          # CLI entrypoint
 internal/
-  ├── config/        # Configuración y variables de entorno
+  ├── config/        # Configuration and environment variables
   ├── db/           # SQLite initialization
-  ├── memory/       # Memory models y repository
-  ├── embeddings/   # Embeddings (TF-IDF, cache)
-  ├── graph/        # Grafo de relaciones
-  ├── mcp/          # MCP Server con Go SDK
+  ├── memory/       # Memory models and repository
+  ├── embeddings/   # Embeddings (TF-IDF, ONNX, cache)
+  ├── graph/        # Relationship graph
+  ├── mcp/          # MCP Server (Go SDK)
   ├── pruner/       # Context pruning
   ├── session/      # Session tracking
   └── tui/          # Bubble Tea TUI
 ```
 
-## Convenciones de Código
+## Code Conventions
 
-### Estilo de Código
+- Follow `golangci-lint` configuration in `.golangci.yml`
+- Use `MixedCaps` for exported names, `camelCase` for unexported
+- Add `godoc` comments to exported functions
+- No comments unless necessary
 
-- Seguir `golangci-lint` configuración en `.golangci.yml`
-- Usar nombres en MixedCaps para exportados
-- Usar nombres en camelCase para privados
-- Agregar godoc comments a funciones exportadas
+## Commit Messages
 
-### Commit Messages
-
-- Usar presente: "Add feature" no "Added feature"
-- Mantener commits atómicos y enfocados
-- Referenciar issues cuando sea aplicable
+- Use imperative present tense: "Add feature" not "Added feature"
+- Keep commits atomic and focused
+- Reference issues when applicable
 
 ## Testing
 
-### Escribir Tests
-
-- Los tests deben ir en archivos `*_test.go`
-- Usar `github.com/stretchr/testify` para assertions
-- Crear helper functions `setupTest*` para preparar el entorno
-- Usar `require` para errores fatales y `assert` para checks regulares
-
-### Cobertura
-
-- Buscar mantener >90% de cobertura
-- Tests críticos para funcionalidad principal
-- Tests de integración para MCP Server
-- Benchmarks para operaciones frecuentes
+- Tests go in `*_test.go` files
+- Use `github.com/stretchr/testify` for assertions
+- Create `setupTest*` helpers for environment setup
+- Use `require` for fatal assertions, `assert` for regular checks
+- Use `t.TempDir()` for temporary files
 
 ## Pull Requests
 
-### Antes de Crear un PR
+1. Ensure tests pass: `make test`
+2. Ensure lint passes: `make lint`
+3. Update documentation if needed
+4. Add tests for new functionality
+5. Update CHANGELOG.md if applicable
 
-1. Ejecutar `make ci` para asegurar que tests y linters pasan
-2. Actualizar documentación si es necesario
-3. Agregar tests para nuevas funcionalidades
-4. Agregar entradas al CHANGELOG.md
+## Reporting Issues
 
-### Proceso de Review
+When reporting issues, include:
 
-1. Los PRs son revisados por maintainers
-2. Los tests deben pasar en CI
-3. El código debe pasar linters
-4. Los comentarios de review deben ser respondidos
+- Go version: `go version`
+- OS and architecture
+- Steps to reproduce
+- Expected vs actual behavior
+- Relevant logs
 
-## Reportar Issues
+## License
 
-Al reportar issues, incluye:
-
-- Versión de Go: `go version`
-- Sistema operativo
-- Pasos para reproducir
-- Comportamiento esperado vs actual
-- Logs relevantes
-
-## Licencia
-
-Al contribuir, aceptas que tus contribuciones sean licenciadas bajo la MIT License.
+By contributing, you agree that your contributions will be licensed under the MIT License.

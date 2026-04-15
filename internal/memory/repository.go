@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"log"
+
 	"github.com/google/uuid"
 	"github.com/rodascaar/synkro/internal/db"
 	"github.com/rodascaar/synkro/internal/embeddings"
@@ -77,7 +79,11 @@ func (r *Repository) Create(ctx context.Context, mem *Memory) error {
 	if r.embeddingGenerator != nil {
 		embedding, err := r.embeddingGenerator.Generate(ctx, mem.Title+" "+mem.Content)
 		if err == nil {
-			_ = r.saveEmbedding(ctx, mem.ID, embedding)
+			if saveErr := r.saveEmbedding(ctx, mem.ID, embedding); saveErr != nil {
+				log.Printf("warning: failed to save embedding for %s: %v", mem.ID, saveErr)
+			}
+		} else {
+			log.Printf("warning: failed to generate embedding for %s: %v", mem.ID, err)
 		}
 	}
 

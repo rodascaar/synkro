@@ -17,6 +17,8 @@ type Config struct {
 	SimilarityThreshold float64 `json:"similarity_threshold"`
 	EmbeddingDim        int     `json:"embedding_dim"`
 	ModelType           string  `json:"model_type"`
+	ModelDir            string  `json:"model_dir"`
+	PreferredModel      string  `json:"preferred_model"`
 	AutoUpdateCheck     bool    `json:"auto_update"`
 	CheckUpdateOnStart  bool    `json:"check_update_on_start"`
 	LastUpdateCheck     int     `json:"last_update_check"`
@@ -41,6 +43,8 @@ func Load() (*Config, error) {
 		SimilarityThreshold: getFloatEnv("SYNKRO_SIMILARITY_THRESHOLD", 0.5),
 		EmbeddingDim:        getIntEnv("SYNKRO_EMBEDDING_DIM", 384),
 		ModelType:           getEnv("SYNKRO_MODEL_TYPE", "tfidf"),
+		ModelDir:            getEnv("SYNKRO_MODEL_DIR", "models"),
+		PreferredModel:      getEnv("SYNKRO_PREFERRED_MODEL", "all-MiniLM-L6-v2"),
 		AutoUpdateCheck:     getBoolEnv("SYNKRO_AUTO_UPDATE", true),
 		CheckUpdateOnStart:  getBoolEnv("SYNKRO_CHECK_UPDATE_ON_START", true),
 		LastUpdateCheck:     getIntEnv("SYNKRO_LAST_UPDATE_CHECK", 0),
@@ -172,6 +176,12 @@ func (c *Config) applyEnvOverrides() {
 	}
 	if v := os.Getenv("SYNKRO_MODEL_TYPE"); v != "" {
 		c.ModelType = v
+	}
+	if v := os.Getenv("SYNKRO_MODEL_DIR"); v != "" {
+		c.ModelDir = v
+	}
+	if v := os.Getenv("SYNKRO_PREFERRED_MODEL"); v != "" {
+		c.PreferredModel = v
 	}
 	if v := os.Getenv("SYNKRO_AUTO_UPDATE"); v != "" {
 		if parsed, err := strconv.ParseBool(v); err == nil {

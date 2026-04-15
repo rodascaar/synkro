@@ -1,14 +1,14 @@
-# Synkro v2 🚀
+# Synkro
 
-> **Motor de Contexto Inteligente para LLMs**
+> Intelligent Context Engine for LLMs
 
 ![Version](https://img.shields.io/badge/version-2.0-blue)
 ![Go](https://img.shields.io/badge/Go-1.24+-00ADD8E)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-Sistema de gestión de memoria con embeddings, grafo de relaciones y pruning inteligente.
+Memory management system with embeddings, relationship graph, and intelligent context pruning.
 
-## 🚀 Quick Start
+## Quick Start
 
 ### One-Command Installation (Recommended)
 
@@ -20,77 +20,87 @@ curl -fsSL https://raw.githubusercontent.com/rodascaar/synkro/main/install.sh | 
 irm https://raw.githubusercontent.com/rodascaar/synkro/main/install.ps1 | iex
 ```
 
+The installer handles platform detection (macOS/Linux/Windows, Intel/ARM), dependency checking, binary download, shell integration, and database initialization.
+
+### Manual Build
+
+```bash
+git clone https://github.com/rodascaar/synkro.git
+cd synkro
+make build
+./synkro init
+```
+
 ### Quick Commands
 
 ```bash
-./synkro init           # Initialize
-./synkro add            # Add memory
-./synkro list           # List
-./synkro search         # Search
-./synkro delete <id>    # Delete memory
+./synkro init           # Initialize database
+./synkro add            # Add a memory
+./synkro list           # List memories
+./synkro search <query> # Search memories
+./synkro delete <id>    # Delete a memory
 ./synkro model list     # List embedding models
-./synkro tui            # Professional TUI
-./synkro mcp            # MCP server
+./synkro tui            # Launch TUI
+./synkro mcp            # Start MCP server
 ```
 
-## 📚 Documentation
+## Documentation
 
-👋 **Ver toda la documentación en** [docs/](docs/)
+| Document | Description |
+|----------|-------------|
+| [INDEX.md](docs/INDEX.md) | Complete documentation index |
+| [QUICKSTART.md](docs/QUICKSTART.md) | 5-minute quick start guide |
+| [AGENTS.md](docs/AGENTS.md) | AI agent integration guide |
+| [INSTALL.md](docs/INSTALL.md) | MCP setup for all IDEs |
+| [EMBEDDINGS.md](docs/EMBEDDINGS.md) | Available embedding models |
+| [TUI.md](docs/TUI.md) | Complete TUI guide |
+| [CHANGELOG.md](CHANGELOG.md) | Changelog |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contributing guide |
 
-| Documento | Descripción |
-|-----------|-------------|
-| **[INDEX.md](docs/INDEX.md)** | 📚 Índice completo de documentación |
-| **[README.md](docs/README.md)** | 📖 Documentación completa del proyecto |
-| **[QUICKSTART.md](docs/QUICKSTART.md)** | ⚡ Guía rápida de 5 minutos |
-| **[AGENTS.md](docs/AGENTS.md)** | 🤖 Guía para integrar con agentes de IA |
-| **[INSTALL.md](docs/INSTALL.md)** | 🔧 Instalación MCP para todos los IDEs |
-| **[EMBEDDINGS.md](docs/EMBEDDINGS.md)** | 🔍 Modelos de embeddings disponibles |
-| **[TUI.md](docs/TUI.md)** | 🖥️ Guía completa de la TUI profesional |
-| **[CHANGELOG.md](CHANGELOG.md)** | 📋 Historial de cambios |
-| **[CONTRIBUTING.md](CONTRIBUTING.md)** | 🤝 Guía para contribuir |
+## Features
 
-## ✨ Características
+- **FTS5 Full-Text Search** with BM25 scoring
+- **Semantic Embeddings** — TF-IDF + N-grams (384 dims) with persistent cache
+- **Relationship Graph** — 6 relation types with BFS pathfinding
+- **Professional TUI** — 3 interactive panels + Add Memory form
+- **MCP Server** — Built with official Go SDK, compatible with all major IDEs
+- **SQLite + WAL** — Fast full-text searches
+- **Session Tracking** — Persistent deduplication across sessions
+- **Context Pruning** — Intelligent result filtering
+- **sqlite-vec KNN** — Real vector search (Linux/macOS)
+- **CI/CD** — GitHub Actions with lint, tests, and vulnerability scanning
 
-- 🔍 **FTS5 Full-Text Search** - Búsqueda con BM25 scoring
-- 🧠 **Embeddings semánticos** - TF-IDF + N-grams (384 dims) con cache persistente
-- 🕸️ **Grafo de relaciones persistente** - 6 tipos con explicaciones claras
-- 🖥️ **TUI profesional** - 3 paneles interactivos + Add Memory form
-- 🤖 **MCP integrado (SDK oficial)** - Compatible con todos los IDEs
-- 💾 **SQLite + WAL** - Búsquedas full-text rápidas
-- 📌 **Session tracking persistente** - Evita repeticiones
-- 🧹 **Context pruning** - Filtrado inteligente
-- ✅ **Testing completo** - Suite de tests con >90% cobertura
-- 🔧 **Variables de entorno** - Configuración flexible
-- 🚀 **CI/CD** - GitHub Actions con lint y tests
-- 🎯 **sqlite-vec KNN** - Búsqueda vectorial real (Linux/macOS)
+## Platform Notes
 
-## ⚠️ Limitaciones de Plataforma
+| Platform | KNN Vectorial | Notes |
+|----------|---------------|-------|
+| Linux | Yes (sqlite-vec) | Requires `libsqlite3-dev` |
+| macOS | Yes (sqlite-vec) | Uses Xcode CLT SQLite |
+| Windows | No | Falls back to in-memory cosine similarity |
 
-| Plataforma | KNN Vectorial | Nota |
-|------------|---------------|------|
-| Linux | ✅ sqlite-vec | Requiere `libsqlite3-dev` |
-| macOS | ✅ sqlite-vec | Usa Xcode CLT SQLite |
-| Windows | ❌ cosine similarity | mingw no incluye `sqlite3.h` necesario para sqlite-vec |
+On Windows, vector search uses in-memory cosine similarity as a fallback. It is functional but slower with large datasets.
 
-En Windows la búsqueda vectorial usa cosine similarity in-memory como fallback. Es funcional pero más lento con datasets grandes.
+ONNX models (optional) require [ONNX Runtime](https://onnxruntime.ai/) to be installed manually. The TF-IDF generator works without additional dependencies.
 
-Los modelos ONNX (opcionales) requieren instalar [ONNX Runtime](https://onnxruntime.ai/) manualmente. El generador TF-IDF funciona sin dependencias adicionales.
-
-## 🎯 TUI Professional
+## TUI
 
 ```bash
 ./synkro tui
 ```
 
-**Atajos:**
-- `↑/↓` o `j/k` - Navegar
-- `/` - Buscar
-- `g` - Ver grafo
-- `Ctrl+C` - Salir
+**Shortcuts:**
+- `Up/Down` or `j/k` — Navigate
+- `/` — Search
+- `Tab` — Cycle filters (All/Decisions/Tasks/Notes/Archive)
+- `g` — Toggle graph view
+- `a` — Add memory
+- `Ctrl+C` — Quit
 
-## 🔧 MCP Integration
+Requires a terminal with AltScreen support (min 120x40).
 
-### Configuración Universal
+## MCP Integration
+
+Add to your AI IDE configuration:
 
 ```json
 {
@@ -103,79 +113,33 @@ Los modelos ONNX (opcionales) requieren instalar [ONNX Runtime](https://onnxrunt
 }
 ```
 
-**IDEs compatibles:**
-- opencode
-- Claude Desktop
-- Cursor
-- VS Code
-- Continue.dev
-- Cline
+Compatible with: Claude Desktop, Cursor, VS Code, Continue.dev, Cline, Windsurf.
 
-Ver más en: [INSTALL.md](docs/INSTALL.md)
+See [INSTALL.md](docs/INSTALL.md) for detailed setup instructions.
 
-## 📦 Installation
+## Performance
 
-### One-Command Installation (Recommended)
+- **Embeddings**: ~50-100ms (cached: ~1-5ms)
+- **Search**: ~10-50ms for 20 results
+- **TUI**: <5ms updates
+- **Binary**: ~8.7MB
 
-```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/rodascaar/synkro/main/install.sh | bash
-
-# Windows
-irm https://raw.githubusercontent.com/rodascaar/synkro/main/install.ps1 | iex
-```
-
-**Professional installer features:**
-- ✅ Automatic platform detection (macOS/Linux/Windows, Intel/ARM)
-- ✅ Dependency checking (Go, disk space, CGO)
-- ✅ Binary download or source fallback
-- ✅ Shell integration (bash/zsh/PowerShell)
-- ✅ Database initialization
-- ✅ Optional embedding model download
-
-### Manual Installation
-
-See [QUICK_INSTALL.md](QUICK_INSTALL.md) for detailed installation guide.
-
-### Build from Source
+## Environment Variables
 
 ```bash
-# Clone repository
-git clone https://github.com/rodascaar/synkro.git
-cd synkro
-
-# Build binary
-make build
-# or: go build -o synkro ./cmd/synkro/
-
-# Install locally
-make install
+SYNKRO_DB_PATH=memory.db             # Database location (default: memory.db)
+SYNKRO_DEBUG=true                     # Enable debug logging
+SYNKRO_MAX_TOKENS=4000                 # Default context token limit
+SYNKRO_SESSION_BUFFER=20              # Ring buffer size
+SYNKRO_CACHE_SIZE=1000                 # Embedding cache size
+SYNKRO_SIMILARITY_THRESHOLD=0.5       # Minimum similarity for results
+SYNKRO_EMBEDDING_DIM=384              # Embedding dimension
+SYNKRO_MODEL_TYPE=tfidf               # Model type: tfidf or onnx
+SYNKRO_MODEL_DIR=models                # Model download directory
+SYNKRO_PREFERRED_MODEL=all-MiniLM-L6-v2  # Default ONNX model
+SYNKRO_AUTO_UPDATE=true               # Enable auto-update check
 ```
 
-### Manual
-```bash
-git clone https://github.com/rodascaar/synkro.git
-cd synkro
-go build -o synkro ./cmd/synkro/
-./synkro init
-```
+## License
 
-Ver más en: [QUICKSTART.md](docs/QUICKSTART.md)
-
-## 📊 Performance
-
-- **Embeddings**: ~50-100ms (cacheado: ~1-5ms)
-- **Search**: ~10-50ms para 20 resultados
-- **TUI**: <5ms actualizaciones
-- **Binary**: 8.7MB
-
-## 📄 License
-
-MIT License - ver [LICENSE](LICENSE)
-
----
-
-**Synkro v2** - Motor de Contexto Inteligente para LLMs
-
-📚 **Documentación completa:** [docs/](docs/)
-🚀 **Estado:** 100% Completado ✅
+MIT License - see [LICENSE](LICENSE)

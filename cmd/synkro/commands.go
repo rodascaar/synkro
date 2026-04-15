@@ -58,8 +58,8 @@ var addCmd = &cobra.Command{
 		embedMgr, err := embeddings.NewEmbeddingManager(embeddings.Config{
 			ModelType:      embeddings.ModelType(cfg.ModelType),
 			DB:             d.DB(),
-			ModelPath:      "models",
-			PreferredModel: "all-MiniLM-L6-v2",
+			ModelPath:      cfg.ModelDir,
+			PreferredModel: cfg.PreferredModel,
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating embedding manager: %v\n", err)
@@ -195,6 +195,7 @@ var initCmd = &cobra.Command{
 	Short: "Initialize database",
 	Run: func(cmd *cobra.Command, args []string) {
 		withModels, _ := cmd.Flags().GetBool("with-models")
+		noTutorial, _ := cmd.Flags().GetBool("no-tutorial")
 
 		d, err := db.New(cfg.DatabasePath)
 		if err != nil {
@@ -204,19 +205,25 @@ var initCmd = &cobra.Command{
 		defer func() { _ = d.Close() }()
 		fmt.Printf("Database initialized at %s\n", cfg.DatabasePath)
 
-		// Preguntar si es nuevo usuario
-		fmt.Println("")
-		fmt.Print("¿Eres nuevo en Synkro? ¿Quieres ver un tutorial? (y/n): ")
-		var response string
-		_, _ = fmt.Scanln(&response)
+		isTerminal := true
+		if stat, statErr := os.Stdin.Stat(); statErr == nil {
+			isTerminal = (stat.Mode() & os.ModeCharDevice) != 0
+		}
 
-		if strings.ToLower(strings.TrimSpace(response)) == "y" || strings.ToLower(strings.TrimSpace(response)) == "yes" {
+		if !noTutorial && isTerminal {
 			fmt.Println("")
-			fmt.Println("Iniciando tutorial...")
+			fmt.Print("New to Synkro? Want to see a tutorial? (y/n): ")
+			var response string
+			_, _ = fmt.Scanln(&response)
 
-			p := tea.NewProgram(tui.InitialTutorialModel(), tea.WithAltScreen())
-			if _, err := p.Run(); err != nil {
-				fmt.Fprintf(os.Stderr, "Tutorial error: %v\n", err)
+			if strings.ToLower(strings.TrimSpace(response)) == "y" || strings.ToLower(strings.TrimSpace(response)) == "yes" {
+				fmt.Println("")
+				fmt.Println("Starting tutorial...")
+
+				p := tea.NewProgram(tui.InitialTutorialModel(), tea.WithAltScreen())
+				if _, err := p.Run(); err != nil {
+					fmt.Fprintf(os.Stderr, "Tutorial error: %v\n", err)
+				}
 			}
 		}
 
@@ -426,6 +433,7 @@ func init() {
 	rootCmd.AddCommand(deleteCmd)
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().Bool("with-models", false, "Enable embedding models")
+	initCmd.Flags().Bool("no-tutorial", false, "Skip interactive tutorial prompt")
 	rootCmd.AddCommand(tuiCmd)
 	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(versionCmd)
@@ -481,8 +489,8 @@ var mcpCmd = &cobra.Command{
 		embedMgr, err := embeddings.NewEmbeddingManager(embeddings.Config{
 			ModelType:      embeddings.ModelType(cfg.ModelType),
 			DB:             d.DB(),
-			ModelPath:      "models",
-			PreferredModel: "all-MiniLM-L6-v2",
+			ModelPath:      cfg.ModelDir,
+			PreferredModel: cfg.PreferredModel,
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating embedding manager: %v\n", err)
