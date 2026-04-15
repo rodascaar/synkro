@@ -77,6 +77,9 @@ jobs:
           choco install mingw -y --no-progress
           echo "CC=gcc" >> "$GITHUB_ENV"
           echo "CGO_ENABLED=1" >> "$GITHUB_ENV"
+          curl -sL https://www.sqlite.org/2024/sqlite-amalgamation-3450000.zip -o sqlite3.zip
+          unzip -q sqlite3.zip
+          echo "CGO_CFLAGS=-I${{ github.workspace }}/sqlite3-3450000" >> "$GITHUB_ENV"
 
       - name: Build binary
         shell: bash
