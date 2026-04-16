@@ -19,6 +19,12 @@ go mod download
 ./synkro init
 ```
 
+For ONNX embeddings (optional):
+```bash
+brew install onnxruntime    # macOS
+./synkro init --with-models  # Auto-download model + enable ONNX
+```
+
 ### Running Tests
 
 ```bash

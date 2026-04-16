@@ -8,6 +8,8 @@ go build -o synkro ./cmd/synkro/
 
 # Initialize database (required before any operations)
 ./synkro init
+./synkro init --no-tutorial   # Skip interactive tutorial
+./synkro init --with-models   # Init + auto-download ONNX model (~90MB)
 
 # CLI operations
 ./synkro add --title "Test" --content "Content" --type note

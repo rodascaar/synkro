@@ -16,6 +16,23 @@ func TestLoad_Defaults(t *testing.T) {
 	t.Setenv("SYNKRO_MAX_TOKENS", "")
 	t.Setenv("SYNKRO_MODEL_TYPE", "")
 
+	home, _ := os.UserHomeDir()
+	configDir := filepath.Join(home, ".synkro")
+	configPath := filepath.Join(configDir, "config.json")
+
+	backup := ""
+	if data, err := os.ReadFile(configPath); err == nil {
+		backup = string(data)
+	}
+	_ = os.Remove(configPath)
+
+	t.Cleanup(func() {
+		if backup != "" {
+			_ = os.WriteFile(configPath, []byte(backup), 0644)
+		}
+	})
+	t.Setenv("SYNKRO_CONFIG_PATH", "")
+
 	cfg, err := Load()
 	require.NoError(t, err)
 	assert.Equal(t, "memory.db", cfg.DatabasePath)
