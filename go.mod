@@ -1,6 +1,6 @@
 module github.com/rodascaar/synkro
 
-go 1.24.2
+go 1.25.0
 
 require (
 	github.com/asg017/sqlite-vec-go-bindings v0.1.6
@@ -9,7 +9,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-sqlite3 v1.14.42
-	github.com/modelcontextprotocol/go-sdk v1.4.0
+	github.com/modelcontextprotocol/go-sdk v1.4.1
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 	github.com/yalue/onnxruntime_go v1.27.0
