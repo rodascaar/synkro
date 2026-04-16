@@ -80,7 +80,25 @@ make build
 
 On Windows, vector search uses in-memory cosine similarity as a fallback. It is functional but slower with large datasets.
 
-ONNX models (optional) require [ONNX Runtime](https://onnxruntime.ai/) to be installed manually. The TF-IDF generator works without additional dependencies.
+### Embedding Models (Optional)
+
+Synkro includes a TF-IDF generator that works out of the box. For higher quality semantic search, install ONNX Runtime and download a sentence-transformers model:
+
+```bash
+# 1. Install ONNX Runtime
+brew install onnxruntime    # macOS
+apt install libonnxruntime-dev  # Linux
+
+# 2. Initialize with model auto-download (~90 MB)
+./synkro init --with-models
+
+# Or download manually
+./synkro model download all-MiniLM-L6-v2
+```
+
+`init --with-models` automatically downloads the model, detects ONNX Runtime availability, and configures Synkro to use it. If ONNX Runtime is not installed, it prints installation instructions and falls back to TF-IDF.
+
+Set `SYNKRO_MODEL_TYPE=onnx` in environment variables to use ONNX embeddings. Without it, Synkro defaults to TF-IDF.
 
 ## TUI
 
