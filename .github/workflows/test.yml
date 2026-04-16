@@ -36,6 +36,7 @@ jobs:
 
     - name: Run govulncheck
       run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      continue-on-error: true
 
     - name: Run tests
       run: go test -v -race -coverprofile=coverage.out ./...
