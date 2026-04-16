@@ -55,8 +55,14 @@ var addCmd = &cobra.Command{
 
 		repo := memory.NewRepository(d.DB())
 
+		modelType := embeddings.ModelType(cfg.ModelType)
+		if modelType == embeddings.ModelTypeONNX && embeddings.FindONNXRuntimePath() == "" {
+			fmt.Println("Warning: ONNX Runtime not found, falling back to TF-IDF")
+			modelType = embeddings.ModelTypeTFIDF
+		}
+
 		embedMgr, err := embeddings.NewEmbeddingManager(embeddings.Config{
-			ModelType:      embeddings.ModelType(cfg.ModelType),
+			ModelType:      modelType,
 			DB:             d.DB(),
 			ModelPath:      cfg.ModelDir,
 			PreferredModel: cfg.PreferredModel,
@@ -228,10 +234,78 @@ var initCmd = &cobra.Command{
 		}
 
 		if withModels {
-			fmt.Println("Embedding models enabled (MiniLM)")
-			fmt.Println("Note: For full embeddings functionality, download models using:")
-			fmt.Println("  synkro model download all-MiniLM-L6-v2")
-			fmt.Println("  synkro model download paraphrase-multilingual-MiniLM-L12-v2")
+			modelMgr := embeddings.NewModelManager(&embeddings.ManagerConfig{
+				DownloadDir:  cfg.ModelDir,
+				CacheDir:     "cache",
+				MaxModels:    5,
+				AutoDownload: false,
+			})
+
+			fmt.Println("Setting up embedding models...")
+			fmt.Printf("Model directory: %s\n", cfg.ModelDir)
+
+			modelName := cfg.PreferredModel
+			if modelName == "" {
+				modelName = "all-MiniLM-L6-v2"
+			}
+
+			model, err := modelMgr.GetModel(modelName)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: model %s not found: %v\n", modelName, err)
+				fmt.Println("Continuing with TF-IDF embeddings.")
+			} else if model.Downloaded {
+				fmt.Printf("Model %s already downloaded (%.1f MB)\n", modelName, float64(model.FileSize)/(1024*1024))
+
+				onnxPath := embeddings.FindONNXRuntimePath()
+				if onnxPath == "" {
+					fmt.Println("Warning: ONNX Runtime not found. Install with:")
+					fmt.Println("  brew install onnxruntime  (macOS)")
+					fmt.Println("  apt install libonnxruntime-dev  (Linux)")
+					fmt.Println("Continuing with TF-IDF embeddings.")
+				} else {
+					fmt.Printf("ONNX Runtime found: %s\n", onnxPath)
+					fmt.Println("Switching to ONNX embeddings...")
+					cfg.ModelType = "onnx"
+					if err := config.Save(cfg); err != nil {
+						fmt.Fprintf(os.Stderr, "Warning: failed to save config: %v\n", err)
+					}
+				}
+			} else {
+				fmt.Printf("Downloading model: %s (~90 MB)...\n", modelName)
+
+				progressChan := make(chan float64)
+				go func() {
+					if err := modelMgr.DownloadModel(context.Background(), modelName, func(progress float64) {
+						progressChan <- progress
+					}); err != nil {
+						fmt.Fprintf(os.Stderr, "Error downloading model: %v\n", err)
+						close(progressChan)
+						return
+					}
+					close(progressChan)
+				}()
+
+				for progress := range progressChan {
+					percent := int(progress * 100)
+					fmt.Printf("\rProgress: %d%% [%-50s]", percent, strings.Repeat("=", percent/2)+strings.Repeat(" ", 50-percent/2))
+				}
+				fmt.Println("\n✓ Model downloaded successfully")
+
+				onnxPath := embeddings.FindONNXRuntimePath()
+				if onnxPath == "" {
+					fmt.Println("Warning: ONNX Runtime not found. Install with:")
+					fmt.Println("  brew install onnxruntime  (macOS)")
+					fmt.Println("  apt install libonnxruntime-dev  (Linux)")
+					fmt.Println("Continuing with TF-IDF embeddings.")
+				} else {
+					fmt.Printf("ONNX Runtime found: %s\n", onnxPath)
+					fmt.Println("Switching to ONNX embeddings...")
+					cfg.ModelType = "onnx"
+					if err := config.Save(cfg); err != nil {
+						fmt.Fprintf(os.Stderr, "Warning: failed to save config: %v\n", err)
+					}
+				}
+			}
 		}
 	},
 }
@@ -486,8 +560,14 @@ var mcpCmd = &cobra.Command{
 
 		repo := memory.NewRepository(d.DB())
 
+		modelType := embeddings.ModelType(cfg.ModelType)
+		if modelType == embeddings.ModelTypeONNX && embeddings.FindONNXRuntimePath() == "" {
+			fmt.Println("Warning: ONNX Runtime not found, falling back to TF-IDF")
+			modelType = embeddings.ModelTypeTFIDF
+		}
+
 		embedMgr, err := embeddings.NewEmbeddingManager(embeddings.Config{
-			ModelType:      embeddings.ModelType(cfg.ModelType),
+			ModelType:      modelType,
 			DB:             d.DB(),
 			ModelPath:      cfg.ModelDir,
 			PreferredModel: cfg.PreferredModel,

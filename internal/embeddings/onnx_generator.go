@@ -26,7 +26,7 @@ type ONNXEmbeddingGenerator struct {
 	tokenizer    *WordPieceTokenizer
 }
 
-func findONNXRuntimePath() string {
+func FindONNXRuntimePath() string {
 	paths := []string{}
 
 	switch runtime.GOOS {
@@ -61,7 +61,7 @@ func fileExists(path string) bool {
 }
 
 func NewONNXEmbeddingGenerator(modelManager *ModelManager, cache *Cache) (*ONNXEmbeddingGenerator, error) {
-	libPath := findONNXRuntimePath()
+	libPath := FindONNXRuntimePath()
 	if libPath == "" {
 		return nil, fmt.Errorf("ONNX Runtime library not found. Install with: brew install onnxruntime (macOS) or apt install libonnxruntime-dev (Linux)")
 	}

@@ -153,7 +153,7 @@ func TestFileExists(t *testing.T) {
 }
 
 func TestFindONNXRuntimePath(t *testing.T) {
-	path := findONNXRuntimePath()
+	path := FindONNXRuntimePath()
 	if path != "" {
 		assert.FileExists(t, path)
 	}
