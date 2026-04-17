@@ -11,7 +11,7 @@ import (
 
 var vecAvailable bool
 
-func InsertVector(ctx context.Context, db *sql.DB, memoryID string, embedding []float32) error {
+func InsertVector(ctx context.Context, exec Executor, memoryID string, embedding []float32) error {
 	return synkroerrors.ErrVecNotAvailable
 }
 
