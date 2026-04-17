@@ -26,7 +26,7 @@ func init() {
 	vecAvailable = true
 }
 
-func InsertVector(ctx context.Context, db *sql.DB, memoryID string, embedding []float32) error {
+func InsertVector(ctx context.Context, exec Executor, memoryID string, embedding []float32) error {
 	if !vecAvailable {
 		return synkroerrors.ErrVecNotAvailable
 	}
@@ -36,7 +36,7 @@ func InsertVector(ctx context.Context, db *sql.DB, memoryID string, embedding []
 		return fmt.Errorf("failed to serialize embedding: %w", err)
 	}
 
-	_, err = db.ExecContext(ctx, `INSERT INTO memory_vec(memory_id, embedding) VALUES (?, ?)`, memoryID, vec)
+	_, err = exec.ExecContext(ctx, `INSERT INTO memory_vec(memory_id, embedding) VALUES (?, ?)`, memoryID, vec)
 	if err != nil {
 		return fmt.Errorf("failed to insert vector: %w", err)
 	}

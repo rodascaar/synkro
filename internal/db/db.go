@@ -24,7 +24,7 @@ func New(path string) (*Database, error) {
 		}
 	}
 
-	db, err := sql.Open("sqlite3", path+"?_journal_mode=WAL&_foreign_keys=ON")
+	db, err := sql.Open("sqlite3", path+"?_journal_mode=WAL&_foreign_keys=ON&_busy_timeout=5000&_txlock=immediate")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -146,37 +146,5 @@ func (d *Database) initSchema() error {
 		return err
 	}
 
-	ftsSchema := `
-		CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
-			id,
-			title,
-			content,
-			content=memories,
-			content_rowid=rowid
-		);
-
-		CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
-			INSERT INTO memories_fts(rowid, id, title, content)
-			VALUES (new.rowid, new.id, new.title, new.content);
-		END;
-
-		CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
-			INSERT INTO memories_fts(memories_fts, rowid, id, title, content)
-			VALUES ('delete', old.rowid, old.id, old.title, old.content);
-		END;
-
-		CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
-			INSERT INTO memories_fts(memories_fts, rowid, id, title, content)
-			VALUES ('delete', old.rowid, old.id, old.title, old.content);
-			INSERT INTO memories_fts(rowid, id, title, content)
-			VALUES (new.rowid, new.id, new.title, new.content);
-		END;
-	`
-
-	_, err = d.db.Exec(ftsSchema)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: FTS5 not available, full-text search disabled: %v\n", err)
-		fmt.Fprintln(os.Stderr, "Note: Search will only use vector embeddings")
-	}
 	return nil
 }

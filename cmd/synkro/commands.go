@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -551,18 +552,21 @@ var mcpCmd = &cobra.Command{
 	Use:   "mcp",
 	Short: "Run Synkro MCP server",
 	Run: func(cmd *cobra.Command, args []string) {
+		start := time.Now()
+		log.SetOutput(os.Stderr)
+
 		d, err := db.New(cfg.DatabasePath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
-			os.Exit(1)
+			log.Fatalf("Error opening database: %v", err)
 		}
 		defer func() { _ = d.Close() }()
+		log.Printf("[startup] db.New: %v", time.Since(start))
 
 		repo := memory.NewRepository(d.DB())
 
 		modelType := embeddings.ModelType(cfg.ModelType)
 		if modelType == embeddings.ModelTypeONNX && embeddings.FindONNXRuntimePath() == "" {
-			fmt.Println("Warning: ONNX Runtime not found, falling back to TF-IDF")
+			log.Println("Warning: ONNX Runtime not found, falling back to TF-IDF")
 			modelType = embeddings.ModelTypeTFIDF
 		}
 
@@ -571,12 +575,23 @@ var mcpCmd = &cobra.Command{
 			DB:             d.DB(),
 			ModelPath:      cfg.ModelDir,
 			PreferredModel: cfg.PreferredModel,
+			EmbedOnInit:    false,
 		})
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating embedding manager: %v\n", err)
-			os.Exit(1)
+			log.Fatalf("Error creating embedding manager: %v", err)
 		}
 		repo.SetEmbeddingGenerator(embedMgr)
+		log.Printf("[startup] embedding manager ready: %v", time.Since(start))
+
+		if modelType == embeddings.ModelTypeONNX {
+			embedMgr.LoadONNXAsync(embeddings.Config{
+				ModelType:      modelType,
+				DB:             d.DB(),
+				ModelPath:      cfg.ModelDir,
+				PreferredModel: cfg.PreferredModel,
+			})
+			log.Printf("[startup] ONNX loading in background: %v", time.Since(start))
+		}
 
 		graphRepo := graph.NewRepository(d.DB())
 		g := graph.NewGraph(repo, graphRepo)
@@ -588,9 +603,11 @@ var mcpCmd = &cobra.Command{
 
 		mcpServer := mcpserver.NewServer(repo, g, st, cp)
 		mcpServer.SetVersion(Version)
+		mcpServer.SetEmbeddingType(cfg.ModelType)
+		log.Printf("[startup] ready to serve (total: %v)", time.Since(start))
+
 		if err := mcpServer.Run(context.Background()); err != nil {
-			fmt.Fprintf(os.Stderr, "MCP server error: %v\n", err)
-			os.Exit(1)
+			log.Fatalf("MCP server error: %v", err)
 		}
 	},
 }

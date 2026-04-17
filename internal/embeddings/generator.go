@@ -7,6 +7,9 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 type EmbeddingGenerator interface {
@@ -95,6 +98,7 @@ func (g *TFIDFEmbeddingGenerator) Dimension() int {
 }
 
 func (g *TFIDFEmbeddingGenerator) tokenize(text string) []string {
+	text = normalizeText(text)
 	text = strings.ToLower(text)
 	re := regexp.MustCompile(`[^\w\s]`)
 	text = re.ReplaceAllString(text, " ")
@@ -242,4 +246,16 @@ func DeserializeEmbedding(data []byte) []float32 {
 	}
 
 	return embedding
+}
+
+func normalizeText(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range norm.NFKD.String(s) {
+		if unicode.Is(unicode.Mn, r) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }

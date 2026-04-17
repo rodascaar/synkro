@@ -10,6 +10,19 @@ LDFLAGS := -ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME) 
 CGO_ENABLED := 1
 GOFLAGS := -v
 
+# Detect Homebrew SQLite for FTS5 support on macOS
+HOMEBREW_PREFIX := $(shell brew --prefix 2>/dev/null)
+HOMEBREW_SQLITE := $(shell brew --prefix sqlite 2>/dev/null)
+ifneq ($(wildcard $(HOMEBREW_SQLITE)/include/sqlite3.h),)
+	CGO_CFLAGS := -I$(HOMEBREW_SQLITE)/include -DSQLITE_ENABLE_FTS5
+	CGO_LDFLAGS := -L$(HOMEBREW_SQLITE)/lib
+else ifneq ($(wildcard $(HOMEBREW_PREFIX)/include/sqlite3.h),)
+	CGO_CFLAGS := -I$(HOMEBREW_PREFIX)/include -DSQLITE_ENABLE_FTS5
+	CGO_LDFLAGS := -L$(HOMEBREW_PREFIX)/lib
+else
+	CGO_CFLAGS := -DSQLITE_ENABLE_FTS5
+endif
+
 # Directories
 DIST_DIR := dist
 BUILD_DIR := build
@@ -24,10 +37,10 @@ all: build
 
 # Build binary for current platform
 build:
-	@echo "🔨 Building Synkro $(VERSION)..."
+	@echo "Building Synkro $(VERSION)..."
 	@mkdir -p $(BUILD_DIR)
-	CGO_ENABLED=$(CGO_ENABLED) go build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/synkro ./cmd/synkro/
-	@echo "✅ Build complete: $(BUILD_DIR)/synkro"
+	CGO_ENABLED=$(CGO_ENABLED) CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" go build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/synkro ./cmd/synkro/
+	@echo "Build complete: $(BUILD_DIR)/synkro"
 
 # Build for all platforms
 build-all: build-linux-amd64 build-linux-arm64 build-darwin-amd64 build-darwin-arm64 build-windows-amd64 build-windows-arm64

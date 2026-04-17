@@ -140,6 +140,57 @@ func getMigrations() []Migration {
 				return nil
 			},
 		},
+		{
+			Version: 4,
+			Name:    "fts5_create_and_backfill",
+			Up: func(ctx context.Context, db Executor) error {
+				_, err := db.ExecContext(ctx, `
+					CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+						id,
+						title,
+						content,
+						content=memories,
+						content_rowid=rowid
+					);
+				`)
+				if err != nil {
+					log.Printf("Warning: FTS5 not available, skipping migration: %v", err)
+					return nil
+				}
+
+				_, err = db.ExecContext(ctx, `
+					INSERT INTO memories_fts(rowid, id, title, content)
+					SELECT rowid, id, title, content FROM memories;
+				`)
+				if err != nil {
+					log.Printf("Warning: failed to backfill FTS5: %v", err)
+				}
+
+				_, err = db.ExecContext(ctx, `
+					CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+						INSERT INTO memories_fts(rowid, id, title, content)
+						VALUES (new.rowid, new.id, new.title, new.content);
+					END;
+
+					CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+						INSERT INTO memories_fts(memories_fts, rowid, id, title, content)
+						VALUES ('delete', old.rowid, old.id, old.title, old.content);
+					END;
+
+					CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+						INSERT INTO memories_fts(memories_fts, rowid, id, title, content)
+						VALUES ('delete', old.rowid, old.id, old.title, old.content);
+						INSERT INTO memories_fts(rowid, id, title, content)
+						VALUES (new.rowid, new.id, new.title, new.content);
+					END;
+				`)
+				if err != nil {
+					log.Printf("Warning: failed to create FTS5 triggers: %v", err)
+				}
+
+				return nil
+			},
+		},
 	}
 }
 

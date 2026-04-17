@@ -124,7 +124,7 @@ func (s *Server) AddMemoryWithWriter(ctx context.Context, input AddMemoryInput, 
 		"success":          true,
 		"memory_id":        mem.ID,
 		"similarity_score": 0.0,
-		"embedding_used":   "tfidf",
+		"embedding_used":   s.embeddingType,
 	}
 
 	return writeJSON(w, response)
@@ -352,7 +352,7 @@ func (s *Server) ActivateContext(ctx context.Context, input ActivateContextInput
 	}
 
 	maxSimilarity := results[0].VectorScore
-	if maxSimilarity < 0.3 {
+	if maxSimilarity < 0.1 {
 		response := map[string]interface{}{
 			"query":                input.Query,
 			"session_id":           input.SessionID,
@@ -370,7 +370,7 @@ func (s *Server) ActivateContext(ctx context.Context, input ActivateContextInput
 	var prioritized []*memory.HybridSearchResult
 	var lowPriority []*memory.HybridSearchResult
 
-	if s.sessionTracker != nil {
+	if s.sessionTracker != nil && duplicateDetected {
 		recentDeliveries := s.sessionTracker.GetRecentDeliveries(ctx, input.SessionID, 20)
 
 		for _, result := range results {

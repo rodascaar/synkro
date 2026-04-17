@@ -79,7 +79,7 @@ func (r *Repository) Create(ctx context.Context, mem *Memory) error {
 	if r.embeddingGenerator != nil {
 		embedding, err := r.embeddingGenerator.Generate(ctx, mem.Title+" "+mem.Content)
 		if err == nil {
-			if saveErr := r.saveEmbedding(ctx, mem.ID, embedding); saveErr != nil {
+			if saveErr := r.saveEmbedding(ctx, r.db, mem.ID, embedding); saveErr != nil {
 				log.Printf("warning: failed to save embedding for %s: %v", mem.ID, saveErr)
 			}
 		} else {
@@ -90,11 +90,11 @@ func (r *Repository) Create(ctx context.Context, mem *Memory) error {
 	return nil
 }
 
-func (r *Repository) saveEmbedding(ctx context.Context, memoryID string, embedding []float32) error {
-	if err := db.InsertVector(ctx, r.db, memoryID, embedding); err != nil {
+func (r *Repository) saveEmbedding(ctx context.Context, exec db.Executor, memoryID string, embedding []float32) error {
+	if err := db.InsertVector(ctx, exec, memoryID, embedding); err != nil {
 		return err
 	}
-	_, err := r.db.ExecContext(ctx, `
+	_, err := exec.ExecContext(ctx, `
 		INSERT INTO memory_embeddings (memory_id, embedding, created_at)
 		VALUES (?, ?, ?)
 		ON CONFLICT DO NOTHING
@@ -408,12 +408,36 @@ func (r *Repository) HybridSearch(ctx context.Context, query string, k int, filt
 func (r *Repository) vectorOnlyResults(vectorResults map[string]*VectorResult, k int) []*HybridSearchResult {
 	results := make([]*HybridSearchResult, 0, len(vectorResults))
 
+	if len(vectorResults) == 0 {
+		return results
+	}
+
+	first := true
+	var maxScore, minScore float64
 	for _, vector := range vectorResults {
+		if first || vector.Score > maxScore {
+			maxScore = vector.Score
+		}
+		if first || vector.Score < minScore {
+			minScore = vector.Score
+		}
+		first = false
+	}
+
+	normalize := func(score float64) float64 {
+		if maxScore == minScore {
+			return 1.0
+		}
+		return (score - minScore) / (maxScore - minScore)
+	}
+
+	for _, vector := range vectorResults {
+		normalizedScore := normalize(vector.Score)
 		results = append(results, &HybridSearchResult{
 			Memory:        vector.Memory,
-			VectorScore:   vector.Score,
+			VectorScore:   normalizedScore,
 			FTS5Score:     0.0,
-			CombinedScore: vector.Score,
+			CombinedScore: normalizedScore,
 			MatchType:     "vector",
 		})
 	}

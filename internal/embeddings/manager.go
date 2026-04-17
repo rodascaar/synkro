@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"sync"
 )
 
@@ -29,6 +30,7 @@ type EmbeddingManager struct {
 	onnx     *ONNXEmbeddingGenerator
 	modelMgr *ModelManager
 	enabled  bool
+	ready    bool
 	mu       sync.RWMutex
 	cache    *Cache
 }
@@ -54,34 +56,63 @@ func NewEmbeddingManager(config Config) (*EmbeddingManager, error) {
 	case ModelTypeTFIDF:
 		mgr.tfidf = NewTFIDFEmbeddingGenerator(mgr.cache)
 		mgr.enabled = true
+		mgr.ready = true
 		return mgr, nil
 
 	case ModelTypeONNX:
-		modelMgr := NewModelManager(&ManagerConfig{
-			DownloadDir:    config.ModelPath,
-			CacheDir:       "cache",
-			MaxModels:      5,
-			AutoDownload:   config.EmbedOnInit,
-			PreferredModel: config.PreferredModel,
-		})
+		mgr.tfidf = NewTFIDFEmbeddingGenerator(mgr.cache)
+		mgr.enabled = true
+		mgr.ready = false
 
-		onnxGen, err := NewONNXEmbeddingGenerator(modelMgr, mgr.cache)
-		if err != nil {
-			fmt.Printf("Failed to initialize ONNX embeddings: %v\n", err)
-			fmt.Println("Falling back to TF-IDF")
-			mgr.tfidf = NewTFIDFEmbeddingGenerator(mgr.cache)
-			mgr.enabled = true
-			return mgr, nil
+		if config.EmbedOnInit {
+			mgr.loadONNX(config)
 		}
 
-		mgr.onnx = onnxGen
-		mgr.modelMgr = modelMgr
-		mgr.enabled = true
 		return mgr, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported model type: %s", config.ModelType)
 	}
+}
+
+func (m *EmbeddingManager) loadONNX(config Config) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.onnx != nil {
+		return
+	}
+
+	modelMgr := NewModelManager(&ManagerConfig{
+		DownloadDir:    config.ModelPath,
+		CacheDir:       "cache",
+		MaxModels:      5,
+		AutoDownload:   false,
+		PreferredModel: config.PreferredModel,
+	})
+
+	onnxGen, err := NewONNXEmbeddingGenerator(modelMgr, m.cache)
+	if err != nil {
+		log.Printf("Failed to initialize ONNX embeddings: %v (using TF-IDF)", err)
+		return
+	}
+
+	m.onnx = onnxGen
+	m.modelMgr = modelMgr
+	m.ready = true
+	log.Println("ONNX embeddings loaded successfully")
+}
+
+func (m *EmbeddingManager) LoadONNXAsync(config Config) {
+	go func() {
+		m.loadONNX(config)
+	}()
+}
+
+func (m *EmbeddingManager) IsReady() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.ready
 }
 
 func (m *EmbeddingManager) Enable() error {
@@ -105,9 +136,12 @@ func (m *EmbeddingManager) Generate(ctx context.Context, text string) ([]float32
 	case ModelTypeTFIDF:
 		return m.tfidf.Generate(ctx, text)
 	case ModelTypeONNX:
+		m.mu.RLock()
 		if m.onnx != nil {
+			defer m.mu.RUnlock()
 			return m.onnx.Generate(ctx, text)
 		}
+		m.mu.RUnlock()
 		return m.tfidf.Generate(ctx, text)
 	default:
 		return nil, fmt.Errorf("unsupported model type: %s", m.config.ModelType)
@@ -123,9 +157,12 @@ func (m *EmbeddingManager) GenerateBatch(ctx context.Context, texts []string) ([
 	case ModelTypeTFIDF:
 		return m.tfidf.GenerateBatch(ctx, texts)
 	case ModelTypeONNX:
+		m.mu.RLock()
 		if m.onnx != nil {
+			defer m.mu.RUnlock()
 			return m.onnx.GenerateBatch(ctx, texts)
 		}
+		m.mu.RUnlock()
 		return m.tfidf.GenerateBatch(ctx, texts)
 	default:
 		return nil, fmt.Errorf("unsupported model type: %s", m.config.ModelType)
@@ -137,9 +174,12 @@ func (m *EmbeddingManager) Dimension() int {
 	case ModelTypeTFIDF:
 		return m.tfidf.Dimension()
 	case ModelTypeONNX:
+		m.mu.RLock()
 		if m.onnx != nil {
+			defer m.mu.RUnlock()
 			return m.onnx.Dimension()
 		}
+		m.mu.RUnlock()
 		return m.config.EmbedDim
 	default:
 		return EmbeddingDimension

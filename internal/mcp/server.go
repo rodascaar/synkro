@@ -19,6 +19,7 @@ type Server struct {
 	contextPruner  *pruner.ContextPruner
 	server         *mcp.Server
 	serverVersion  string
+	embeddingType  string
 }
 
 func NewServer(repo *memory.Repository, g *graph.Graph, st *session.SessionTracker, cp *pruner.ContextPruner) *Server {
@@ -33,6 +34,10 @@ func NewServer(repo *memory.Repository, g *graph.Graph, st *session.SessionTrack
 
 func (s *Server) SetVersion(v string) {
 	s.serverVersion = v
+}
+
+func (s *Server) SetEmbeddingType(t string) {
+	s.embeddingType = t
 }
 
 func (s *Server) Run(ctx context.Context) error {
