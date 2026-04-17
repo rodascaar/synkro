@@ -53,7 +53,7 @@ func (r *Repository) Create(ctx context.Context, mem *Memory) error {
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO memories (id, created_at, updated_at, type, title, content, source, status, tags)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, id, mem.CreatedAt.Format(time.RFC3339), mem.UpdatedAt.Format(time.RFC3339), mem.Type, mem.Title, mem.Content, mem.Source, mem.Status, strings.Join(mem.Tags, "|"))
+	`, id, mem.CreatedAt.Format(time.RFC3339), mem.UpdatedAt.Format(time.RFC3339), mem.Type, mem.Title, mem.Content, sourcePtrVal(mem.Source), mem.Status, strings.Join(mem.Tags, "|"))
 	if err != nil {
 		return err
 	}
@@ -125,10 +125,12 @@ func (r *Repository) Get(ctx context.Context, id string) (*Memory, error) {
 	var tagsStr string
 	var createdAtStr, updatedAtStr string
 
+	var source sql.NullString
+
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, created_at, updated_at, type, title, content, source, status, tags
+		SELECT id, created_at, updated_at, type, title, content, COALESCE(source, ''), status, COALESCE(tags, '')
 		FROM memories WHERE id = ?
-	`, id).Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &mem.Source, &mem.Status, &tagsStr)
+	`, id).Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -139,6 +141,7 @@ func (r *Repository) Get(ctx context.Context, id string) (*Memory, error) {
 
 	mem.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
 	mem.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
+	mem.Source = scanSource(source)
 
 	tags, err := r.loadTags(ctx, mem.ID)
 	if err == nil && len(tags) > 0 {
@@ -170,7 +173,7 @@ func (r *Repository) Search(ctx context.Context, query string, filter MemoryFilt
 		args = append(args, filter.Status)
 	}
 
-	sqlQuery := fmt.Sprintf("SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, m.source, m.status, m.tags FROM memories m %s ORDER BY m.created_at DESC", where)
+	sqlQuery := fmt.Sprintf("SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, '') FROM memories m %s ORDER BY m.created_at DESC", where)
 	if filter.Limit > 0 {
 		sqlQuery += " LIMIT ?"
 		args = append(args, filter.Limit)
@@ -191,12 +194,15 @@ func (r *Repository) Search(ctx context.Context, query string, filter MemoryFilt
 		var tagsStr string
 		var createdAtStr, updatedAtStr string
 
-		if err := rows.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &mem.Source, &mem.Status, &tagsStr); err != nil {
+		var source sql.NullString
+
+		if err := rows.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr); err != nil {
 			return nil, err
 		}
 
 		mem.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
 		mem.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
+		mem.Source = scanSource(source)
 		if tagsStr != "" {
 			mem.Tags = strings.Split(tagsStr, "|")
 		}
@@ -245,7 +251,7 @@ func (r *Repository) loadMemoriesByIDs(ctx context.Context, vecResults []*db.Vec
 	}
 
 	sqlQuery := fmt.Sprintf(`
-		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, m.source, m.status
+		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status
 		FROM memories m
 		%s
 		LIMIT ?
@@ -268,12 +274,15 @@ func (r *Repository) loadMemoriesByIDs(ctx context.Context, vecResults []*db.Vec
 		mem := &Memory{}
 		var createdAtStr, updatedAtStr string
 
-		if err := rows.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &mem.Source, &mem.Status); err != nil {
+		var source sql.NullString
+
+		if err := rows.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status); err != nil {
 			return nil, err
 		}
 
 		mem.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
 		mem.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
+		mem.Source = scanSource(source)
 		mem.Tags, _ = r.loadTags(ctx, mem.ID)
 		memories = append(memories, mem)
 	}
@@ -299,7 +308,7 @@ func (r *Repository) fallbackVectorialSearch(ctx context.Context, queryEmbedding
 	}
 
 	sqlQuery := fmt.Sprintf(`
-		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, m.source, m.status, m.tags
+		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, '')
 		FROM memories m
 		LEFT JOIN memory_embeddings e ON m.id = e.memory_id
 		%s
@@ -326,12 +335,15 @@ func (r *Repository) fallbackVectorialSearch(ctx context.Context, queryEmbedding
 		var createdAtStr, updatedAtStr string
 		var embeddingBytes []byte
 
-		if err := rows.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &mem.Source, &mem.Status, &tagsStr, &embeddingBytes); err != nil {
+		var source sql.NullString
+
+		if err := rows.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr, &embeddingBytes); err != nil {
 			continue
 		}
 
 		mem.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
 		mem.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
+		mem.Source = scanSource(source)
 		if tagsStr != "" {
 			mem.Tags = strings.Split(tagsStr, "|")
 		}
@@ -469,7 +481,7 @@ func (r *Repository) searchWithBM25(ctx context.Context, query string, filter Hy
 	safeQuery := sanitizeFTS5Query(query)
 
 	sqlQuery := fmt.Sprintf(`
-		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, m.source, m.status, m.tags, rank
+		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, ''), rank
 		FROM memories m
 		INNER JOIN memories_fts f ON m.id = f.id
 		%s AND memories_fts MATCH ?
@@ -491,12 +503,15 @@ func (r *Repository) searchWithBM25(ctx context.Context, query string, filter Hy
 		var createdAtStr, updatedAtStr string
 		var bm25Rank float64
 
-		if err := rows.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &mem.Source, &mem.Status, &tagsStr, &bm25Rank); err != nil {
+		var source sql.NullString
+
+		if err := rows.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr, &bm25Rank); err != nil {
 			return nil, err
 		}
 
 		mem.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
 		mem.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
+		mem.Source = scanSource(source)
 		if tagsStr != "" {
 			mem.Tags = strings.Split(tagsStr, "|")
 		}
@@ -525,7 +540,7 @@ func (r *Repository) searchByVector(ctx context.Context, queryEmbedding []float3
 	}
 
 	sqlQuery := fmt.Sprintf(`
-		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, m.source, m.status, m.tags, e.embedding
+		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, ''), e.embedding
 		FROM memories m
 		LEFT JOIN memory_embeddings e ON m.id = e.memory_id
 		%s
@@ -547,12 +562,15 @@ func (r *Repository) searchByVector(ctx context.Context, queryEmbedding []float3
 		var createdAtStr, updatedAtStr string
 		var embeddingBytes []byte
 
-		if err := rows.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &mem.Source, &mem.Status, &tagsStr, &embeddingBytes); err != nil {
+		var source sql.NullString
+
+		if err := rows.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr, &embeddingBytes); err != nil {
 			continue
 		}
 
 		mem.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
 		mem.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
+		mem.Source = scanSource(source)
 		if tagsStr != "" {
 			mem.Tags = strings.Split(tagsStr, "|")
 		}
@@ -775,7 +793,7 @@ func (r *Repository) GetByTag(ctx context.Context, tag string, filter MemoryFilt
 	}
 
 	sqlQuery := fmt.Sprintf(`
-		SELECT DISTINCT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, m.source, m.status, m.tags
+		SELECT DISTINCT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, '')
 		FROM memories m
 		INNER JOIN memory_tags mt ON m.id = mt.memory_id
 		%s
@@ -796,12 +814,15 @@ func (r *Repository) GetByTag(ctx context.Context, tag string, filter MemoryFilt
 		var tagsStr string
 		var createdAtStr, updatedAtStr string
 
-		if err := rows.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &mem.Source, &mem.Status, &tagsStr); err != nil {
+		var source sql.NullString
+
+		if err := rows.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr); err != nil {
 			return nil, err
 		}
 
 		mem.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
 		mem.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
+		mem.Source = scanSource(source)
 		mem.Tags, _ = r.loadTags(ctx, mem.ID)
 		memories = append(memories, mem)
 	}
@@ -829,4 +850,25 @@ func sanitizeFTS5Query(query string) string {
 		return "\"\""
 	}
 	return strings.Join(safe, " ")
+}
+
+func scanSource(ns sql.NullString) *string {
+	if ns.Valid {
+		return &ns.String
+	}
+	return nil
+}
+
+func sourcePtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func sourcePtrVal(s *string) sql.NullString {
+	if s != nil {
+		return sql.NullString{String: *s, Valid: true}
+	}
+	return sql.NullString{}
 }

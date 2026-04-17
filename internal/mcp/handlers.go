@@ -111,7 +111,7 @@ func (s *Server) AddMemoryWithWriter(ctx context.Context, input AddMemoryInput, 
 		Type:    input.Type,
 		Title:   input.Title,
 		Content: input.Content,
-		Source:  input.Source,
+		Source:  sourcePtr(input.Source),
 		Status:  "active",
 		Tags:    input.Tags,
 	}
@@ -632,7 +632,7 @@ func convertToContextItems(results []*memory.HybridSearchResult, isReminder bool
 				Type:      result.Memory.Type,
 				Title:     result.Memory.Title,
 				Content:   result.Memory.Content,
-				Source:    result.Memory.Source,
+				Source:    strPtrVal(result.Memory.Source),
 				Status:    result.Memory.Status,
 				Tags:      result.Memory.Tags,
 				CreatedAt: result.Memory.CreatedAt.Format(time.RFC3339),
@@ -666,4 +666,18 @@ func writeJSON(w io.Writer, v interface{}) error {
 	}
 	_, err = fmt.Fprintf(w, "%s\n", data)
 	return err
+}
+
+func strPtrVal(s *string) string {
+	if s != nil {
+		return *s
+	}
+	return ""
+}
+
+func sourcePtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

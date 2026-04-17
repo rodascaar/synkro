@@ -11,7 +11,7 @@ type Memory struct {
 	Type      string
 	Title     string
 	Content   string
-	Source    string
+	Source    *string
 	Status    string
 	Tags      []string
 

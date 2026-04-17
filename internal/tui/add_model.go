@@ -72,7 +72,7 @@ func (m *addModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					Type:    m.fields[0].Value(),
 					Title:   m.fields[1].Value(),
 					Content: m.fields[2].Value(),
-					Source:  "tui",
+					Source:  sourcePtr("tui"),
 					Status:  "active",
 					Tags:    tags,
 				}
@@ -139,4 +139,11 @@ func (m *addModel) renderField(label string, input textinput.Model, focused bool
 		" ",
 		input.View(),
 	)
+}
+
+func sourcePtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

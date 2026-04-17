@@ -120,7 +120,7 @@ var examplesCmd = &cobra.Command{
 				Type:    ex.memType,
 				Title:   ex.title,
 				Content: ex.content,
-				Source:  ex.source,
+				Source:  strToPtr(ex.source),
 				Status:  "active",
 				Tags:    ex.tags,
 			}

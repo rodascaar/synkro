@@ -78,7 +78,7 @@ var addCmd = &cobra.Command{
 			Type:    memType,
 			Title:   title,
 			Content: content,
-			Source:  source,
+			Source:  strToPtr(source),
 			Status:  "active",
 			Tags:    tags,
 		}
@@ -638,4 +638,11 @@ func checkForUpdatesAsync() {
 	// Actualizar último check
 	cfg.LastUpdateCheck = now
 	_ = config.Save(cfg)
+}
+
+func strToPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

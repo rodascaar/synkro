@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func strPtr(s string) *string { return &s }
+
 func setupTestTUI(t *testing.T) (*memory.Repository, func()) {
 	d, err := db.New(":memory:")
 	require.NoError(t, err)
@@ -30,7 +32,7 @@ func createMemories(t *testing.T, repo *memory.Repository) {
 			Type:    typ,
 			Title:   "Test Title " + string(rune('0'+i)),
 			Content: "Test Content " + string(rune('0'+i)),
-			Source:  "test",
+			Source:  strPtr("test"),
 			Status:  "active",
 		}
 		require.NoError(t, repo.Create(context.Background(), mem))
@@ -40,7 +42,7 @@ func createMemories(t *testing.T, repo *memory.Repository) {
 		Type:    "note",
 		Title:   "Archived Note",
 		Content: "Old content",
-		Source:  "test",
+		Source:  strPtr("test"),
 		Status:  "archived",
 	}
 	require.NoError(t, repo.Create(context.Background(), archived))
@@ -195,7 +197,7 @@ func TestModel_View_WithTags(t *testing.T) {
 		Type:    "note",
 		Title:   "Tagged Memory",
 		Content: "Content with tags",
-		Source:  "test",
+		Source:  strPtr("test"),
 		Status:  "active",
 		Tags:    []string{"go", "testing", "tui"},
 	}
@@ -220,7 +222,7 @@ func TestModel_View_RenderContent(t *testing.T) {
 		Type:    "decision",
 		Title:   "Architecture Decision",
 		Content: "We decided to use SQLite for local storage because it's simple and requires no server.",
-		Source:  "team-meeting",
+		Source:  strPtr("team-meeting"),
 		Status:  "active",
 	}
 	require.NoError(t, repo.Create(context.Background(), mem))

@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func strPtr(s string) *string { return &s }
+
 func setupTestDB(t *testing.T) (*db.Database, func()) {
 	d, err := db.New(":memory:")
 	require.NoError(t, err)
@@ -29,7 +31,7 @@ func TestRepository_Create(t *testing.T) {
 		Type:    "note",
 		Title:   "Test Title",
 		Content: "Test Content",
-		Source:  "test",
+		Source:  strPtr("test"),
 		Status:  "active",
 		Tags:    []string{"tag1", "tag2"},
 	}
@@ -51,7 +53,7 @@ func TestRepository_Search(t *testing.T) {
 			Type:    "note",
 			Title:   "Title " + string(rune('0'+i)),
 			Content: "Content " + string(rune('0'+i)),
-			Source:  "test",
+			Source:  strPtr("test"),
 			Status:  "active",
 		}
 		require.NoError(t, repo.Create(context.Background(), mem))
@@ -77,7 +79,7 @@ func TestRepository_Get(t *testing.T) {
 		Type:    "note",
 		Title:   "Test Get",
 		Content: "Test Content",
-		Source:  "test",
+		Source:  strPtr("test"),
 		Status:  "active",
 	}
 
@@ -99,7 +101,7 @@ func TestRepository_Update(t *testing.T) {
 		Type:    "note",
 		Title:   "Test Update",
 		Content: "Test Content",
-		Source:  "test",
+		Source:  strPtr("test"),
 		Status:  "active",
 	}
 
@@ -128,7 +130,7 @@ func TestRepository_Delete(t *testing.T) {
 		Type:    "note",
 		Title:   "Test Delete",
 		Content: "Test Content",
-		Source:  "test",
+		Source:  strPtr("test"),
 		Status:  "active",
 	}
 
@@ -153,7 +155,7 @@ func TestRepository_HybridSearch(t *testing.T) {
 		Type:    "decision",
 		Title:   "Use SQLite",
 		Content: "Decided to use SQLite with FTS5 for Synkro",
-		Source:  "test",
+		Source:  strPtr("test"),
 		Status:  "active",
 	}
 
@@ -266,7 +268,7 @@ func TestRepository_Create_EmptyTags(t *testing.T) {
 		Type:    "task",
 		Title:   "No Tags",
 		Content: "Content",
-		Source:  "test",
+		Source:  strPtr("test"),
 		Status:  "active",
 		Tags:    nil,
 	}
@@ -288,7 +290,7 @@ func TestRepository_Update_MultipleFields(t *testing.T) {
 
 	mem := &memory.Memory{
 		Type: "note", Title: "Original", Content: "Original content",
-		Source: "test", Status: "active",
+		Source: strPtr("test"), Status: "active",
 	}
 	require.NoError(t, repo.Create(context.Background(), mem))
 
@@ -318,7 +320,7 @@ func TestRepository_Update_WithTags(t *testing.T) {
 
 	mem := &memory.Memory{
 		Type: "note", Title: "Tag Update Test", Content: "Content",
-		Source: "test", Status: "active", Tags: []string{"old-tag"},
+		Source: strPtr("test"), Status: "active", Tags: []string{"old-tag"},
 	}
 	require.NoError(t, repo.Create(context.Background(), mem))
 

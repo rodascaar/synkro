@@ -531,7 +531,12 @@ func (m *model) renderDetail() string {
 	content.WriteString("DETAILS\n\n")
 	content.WriteString(fmt.Sprintf("Type: %s\n", mem.Type))
 	content.WriteString(fmt.Sprintf("ID: %s\n", mem.ID))
-	content.WriteString(fmt.Sprintf("Source: %s\n", mem.Source))
+	content.WriteString(fmt.Sprintf("Source: %s\n", func() string {
+		if mem.Source != nil {
+			return *mem.Source
+		}
+		return "N/A"
+	}()))
 	content.WriteString(fmt.Sprintf("Status: %s\n", mem.Status))
 	if len(mem.Tags) > 0 {
 		content.WriteString(fmt.Sprintf("Tags: %s\n", strings.Join(mem.Tags, ", ")))

@@ -16,7 +16,7 @@ func TestConcurrentWrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -56,7 +56,7 @@ func TestBusyTimeoutSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 
 	var bt int
 	err = d.db.QueryRow("PRAGMA busy_timeout").Scan(&bt)
