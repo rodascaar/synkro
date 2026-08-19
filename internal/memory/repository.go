@@ -529,6 +529,24 @@ func (r *Repository) Delete(ctx context.Context, id string) error {
 	return err
 }
 
+// DeleteAll borra todas las memorias y sesiones. Los embeddings, relaciones y
+// entregas se eliminan en cascada vía foreign keys.
+func (r *Repository) DeleteAll(ctx context.Context) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM memories"); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM sessions"); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // --- helpers de scoring ---
 
 // bm25ToScore convierte el rank negativo de FTS5 en un score positivo donde

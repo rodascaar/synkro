@@ -105,7 +105,7 @@ func (s *Server) GetMemory(ctx context.Context, input GetMemoryInput, w io.Write
 		return synkroerrors.ErrMemoryNotFound
 	}
 
-	var relations []interface{}
+	relations := make([]interface{}, 0)
 	if s.graph != nil {
 		rels, err := s.graph.GetRelations(ctx, mem.ID)
 		if err == nil {

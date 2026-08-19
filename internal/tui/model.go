@@ -56,21 +56,23 @@ var (
 )
 
 type keyMap struct {
-	Up     key.Binding
-	Down   key.Binding
-	Enter  key.Binding
-	Escape key.Binding
-	Search key.Binding
-	Add    key.Binding
-	Quit   key.Binding
-	Graph  key.Binding
-	List   key.Binding
-	Filter key.Binding
+	Up        key.Binding
+	Down      key.Binding
+	Enter     key.Binding
+	Escape    key.Binding
+	Search    key.Binding
+	Add       key.Binding
+	Quit      key.Binding
+	Graph     key.Binding
+	List      key.Binding
+	Filter    key.Binding
+	Delete    key.Binding
+	DeleteAll key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
 	return []key.Binding{
-		k.Up, k.Down, k.Enter, k.Search, k.Filter, k.Add, k.Quit,
+		k.Up, k.Down, k.Enter, k.Search, k.Filter, k.Add, k.Delete, k.Quit,
 	}
 }
 
@@ -79,7 +81,7 @@ func (k keyMap) FullHelp() [][]key.Binding {
 		{k.Up, k.Down},
 		{k.Enter, k.Escape},
 		{k.Search, k.Filter, k.Graph, k.List},
-		{k.Add, k.Quit},
+		{k.Add, k.Delete, k.DeleteAll, k.Quit},
 	}
 }
 
@@ -124,6 +126,14 @@ var keys = keyMap{
 		key.WithKeys("tab"),
 		key.WithHelp("tab", "filter"),
 	),
+	Delete: key.NewBinding(
+		key.WithKeys("d"),
+		key.WithHelp("d", "delete"),
+	),
+	DeleteAll: key.NewBinding(
+		key.WithKeys("D"),
+		key.WithHelp("D", "delete all"),
+	),
 }
 
 type model struct {
@@ -143,6 +153,7 @@ type model struct {
 	ctx        context.Context
 	err        error
 	adding     bool
+	confirming string
 }
 
 func InitialModel(repo *memory.Repository, g *graph.Graph) *model {
@@ -263,6 +274,23 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		if m.confirming != "" {
+			switch msg.Type {
+			case tea.KeyRunes:
+				switch msg.String() {
+				case "y", "Y":
+					return m.confirmDelete()
+				case "n", "N":
+					m.confirming = ""
+					return m, nil
+				}
+			case tea.KeyEsc:
+				m.confirming = ""
+				return m, nil
+			}
+			return m, nil
+		}
+
 		switch {
 		case key.Matches(msg, keys.Quit):
 			return m, tea.Quit
@@ -327,6 +355,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.filterType = filterTypes[m.sidebarSel]
 			m.selected = 0
 			return m, nil
+
+		case key.Matches(msg, keys.Delete):
+			if len(m.getDisplayedMemories()) > 0 {
+				m.confirming = "one"
+			}
+			return m, nil
+
+		case key.Matches(msg, keys.DeleteAll):
+			m.confirming = "all"
+			return m, nil
 		}
 
 	case tea.WindowSizeMsg:
@@ -353,6 +391,25 @@ func (m *model) getDisplayedMemories() []*memory.Memory {
 	return m.searchMemories(query)
 }
 
+func (m *model) confirmDelete() (tea.Model, tea.Cmd) {
+	if m.confirming == "all" {
+		if err := m.repo.DeleteAll(m.ctx); err != nil {
+			m.err = errMsg{err}
+		}
+	} else {
+		displayed := m.getDisplayedMemories()
+		if m.selected >= 0 && m.selected < len(displayed) {
+			if err := m.repo.Delete(m.ctx, displayed[m.selected].ID); err != nil {
+				m.err = errMsg{err}
+			}
+		}
+	}
+
+	m.confirming = ""
+	m.selected = 0
+	return m, m.loadMemories()
+}
+
 func (m *model) View() string {
 	if m.err != nil {
 		return fmt.Sprintf("Error: %v", m.err)
@@ -360,6 +417,7 @@ func (m *model) View() string {
 
 	return lipgloss.JoinVertical(lipgloss.Left,
 		m.renderHeader(),
+		m.renderConfirmBanner(),
 		lipgloss.JoinHorizontal(lipgloss.Top,
 			sidebarStyle.Render(m.renderSidebar()),
 			contentStyle.Render(m.renderContent()),
@@ -367,6 +425,23 @@ func (m *model) View() string {
 		),
 		m.renderFooter(),
 	)
+}
+
+func (m *model) renderConfirmBanner() string {
+	if m.confirming == "" {
+		return ""
+	}
+
+	msg := "Delete this memory? (y/n)"
+	if m.confirming == "all" {
+		msg = "Delete ALL memories and sessions? (y/n)"
+	}
+
+	return lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#ff5555")).
+		Bold(true).
+		Padding(0, 1).
+		Render(msg)
 }
 
 func (m *model) renderHeader() string {
@@ -404,6 +479,9 @@ func (m *model) renderSidebar() string {
 	content.WriteString("\n")
 	content.WriteString("SHORTCUTS\n\n")
 	content.WriteString("/  : Search\n")
+	content.WriteString("a  : Add\n")
+	content.WriteString("d  : Delete\n")
+	content.WriteString("D  : Delete all\n")
 	if m.showGraph {
 		content.WriteString("l  : List\n")
 	} else {

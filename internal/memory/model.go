@@ -3,15 +3,15 @@ package memory
 import "time"
 
 type Memory struct {
-	ID        string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	Type      string
-	Title     string
-	Content   string
-	Source    *string
-	Status    string
-	Tags      []string
+	ID        string    `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Type      string    `json:"type"`
+	Title     string    `json:"title"`
+	Content   string    `json:"content"`
+	Source    *string   `json:"source"`
+	Status    string    `json:"status"`
+	Tags      []string  `json:"tags"`
 }
 
 type HybridSearchFilter struct {

@@ -141,6 +141,62 @@ func TestModel_Update_Graph(t *testing.T) {
 	assert.NotNil(t, newModel)
 }
 
+func TestModel_Update_Delete_Confirm(t *testing.T) {
+	repo, cleanup := setupTestTUI(t)
+	defer cleanup()
+	createMemories(t, repo)
+
+	model := tui.InitialModel(repo, nil)
+	cmd := model.Init()
+	loadedModel, _ := model.Update(cmd())
+	_, _ = loadedModel.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	m1, _ := loadedModel.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	_, reload := m1.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	assert.NotNil(t, reload)
+
+	mems, err := repo.Search(context.Background(), "", memory.MemoryFilter{})
+	require.NoError(t, err)
+	assert.Len(t, mems, 4)
+}
+
+func TestModel_Update_Delete_Cancel(t *testing.T) {
+	repo, cleanup := setupTestTUI(t)
+	defer cleanup()
+	createMemories(t, repo)
+
+	model := tui.InitialModel(repo, nil)
+	cmd := model.Init()
+	loadedModel, _ := model.Update(cmd())
+	_, _ = loadedModel.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	m1, _ := loadedModel.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	_, _ = m1.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+
+	mems, err := repo.Search(context.Background(), "", memory.MemoryFilter{})
+	require.NoError(t, err)
+	assert.Len(t, mems, 5)
+}
+
+func TestModel_Update_DeleteAll_Confirm(t *testing.T) {
+	repo, cleanup := setupTestTUI(t)
+	defer cleanup()
+	createMemories(t, repo)
+
+	model := tui.InitialModel(repo, nil)
+	cmd := model.Init()
+	loadedModel, _ := model.Update(cmd())
+	_, _ = loadedModel.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	m1, _ := loadedModel.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
+	_, reload := m1.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	assert.NotNil(t, reload)
+
+	mems, err := repo.Search(context.Background(), "", memory.MemoryFilter{})
+	require.NoError(t, err)
+	assert.Empty(t, mems)
+}
+
 func TestModel_View(t *testing.T) {
 	repo, cleanup := setupTestTUI(t)
 	defer cleanup()

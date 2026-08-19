@@ -166,6 +166,38 @@ func TestRepository_Delete(t *testing.T) {
 	assert.Nil(t, fetched)
 }
 
+func TestRepository_DeleteAll(t *testing.T) {
+	d, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := memory.NewRepository(d.DB())
+
+	for i := 0; i < 3; i++ {
+		mem := &memory.Memory{
+			Type:    "note",
+			Title:   "DeleteAll " + string(rune('0'+i)),
+			Content: "Content",
+			Status:  "active",
+		}
+		require.NoError(t, repo.Create(context.Background(), mem))
+	}
+
+	_, err := d.DB().ExecContext(context.Background(),
+		"INSERT INTO sessions (id, last_query, last_query_at, created_at, updated_at) VALUES ('s1', 'q', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')")
+	require.NoError(t, err)
+
+	require.NoError(t, repo.DeleteAll(context.Background()))
+
+	mems, err := repo.Search(context.Background(), "", memory.MemoryFilter{})
+	require.NoError(t, err)
+	assert.Empty(t, mems)
+
+	var sessionCount int
+	err = d.DB().QueryRow("SELECT COUNT(*) FROM sessions").Scan(&sessionCount)
+	require.NoError(t, err)
+	assert.Equal(t, 0, sessionCount)
+}
+
 func TestRepository_HybridSearch(t *testing.T) {
 	d, cleanup := setupTestDB(t)
 	defer cleanup()
