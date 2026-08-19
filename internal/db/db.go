@@ -78,7 +78,9 @@ func (d *Database) initSchema() error {
 		content TEXT,
 		source TEXT,
 		status TEXT NOT NULL DEFAULT 'active',
-		tags TEXT
+		tags TEXT,
+		topic_key TEXT,
+		pinned INTEGER NOT NULL DEFAULT 0
 	);
 
 	CREATE TABLE IF NOT EXISTS memory_embeddings (
@@ -132,6 +134,7 @@ func (d *Database) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type);
 	CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status);
 	CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_memories_topic_key ON memories(topic_key);
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_embeddings_memory ON memory_embeddings(memory_id);
 	CREATE INDEX IF NOT EXISTS idx_memory_relations_source ON memory_relations(source_id);
 	CREATE INDEX IF NOT EXISTS idx_memory_relations_target ON memory_relations(target_id);

@@ -12,6 +12,8 @@ type Memory struct {
 	Source    *string   `json:"source"`
 	Status    string    `json:"status"`
 	Tags      []string  `json:"tags"`
+	TopicKey  string    `json:"topic_key,omitempty"`
+	Pinned    bool      `json:"pinned"`
 }
 
 type HybridSearchFilter struct {

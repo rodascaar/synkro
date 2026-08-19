@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 
@@ -309,6 +310,55 @@ func (s *Server) Run(ctx context.Context) error {
 		},
 	}, s.handleFindPath)
 
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "pin_memory",
+		Description: "Pin a memory so it appears first in listings",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"id": map[string]interface{}{
+					"type":        "string",
+					"description": "Memory ID (required)",
+				},
+			},
+			"required": []string{"id"},
+		},
+	}, s.handlePinMemory)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "unpin_memory",
+		Description: "Unpin a previously pinned memory",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"id": map[string]interface{}{
+					"type":        "string",
+					"description": "Memory ID (required)",
+				},
+			},
+			"required": []string{"id"},
+		},
+	}, s.handleUnpinMemory)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "save_prompt",
+		Description: "Save a prompt or query as a context memory",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"prompt": map[string]interface{}{
+					"type":        "string",
+					"description": "The prompt or query text (required)",
+				},
+				"session_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Session ID for tracking",
+				},
+			},
+			"required": []string{"prompt"},
+		},
+	}, s.handleSavePrompt)
+
 	log.SetOutput(os.Stderr)
 	log.Printf("Synkro MCP Server v%s starting...\n", s.serverVersion)
 
@@ -458,6 +508,51 @@ func (s *Server) handleFindPath(ctx context.Context, req *mcp.CallToolRequest, a
 	}, nil, nil
 }
 
+func (s *Server) handlePinMemory(ctx context.Context, req *mcp.CallToolRequest, args PinMemoryArgs) (*mcp.CallToolResult, any, error) {
+	if args.ID == "" {
+		return errorResult(fmt.Errorf("id is required")), nil, nil
+	}
+	buf := &BufferWriter{}
+	if err := s.Pin(ctx, args, buf); err != nil {
+		return errorResult(err), nil, nil
+	}
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: buf.String()},
+		},
+	}, nil, nil
+}
+
+func (s *Server) handleUnpinMemory(ctx context.Context, req *mcp.CallToolRequest, args PinMemoryArgs) (*mcp.CallToolResult, any, error) {
+	if args.ID == "" {
+		return errorResult(fmt.Errorf("id is required")), nil, nil
+	}
+	buf := &BufferWriter{}
+	if err := s.Unpin(ctx, args, buf); err != nil {
+		return errorResult(err), nil, nil
+	}
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: buf.String()},
+		},
+	}, nil, nil
+}
+
+func (s *Server) handleSavePrompt(ctx context.Context, req *mcp.CallToolRequest, args SavePromptArgs) (*mcp.CallToolResult, any, error) {
+	if args.Prompt == "" {
+		return errorResult(fmt.Errorf("prompt is required")), nil, nil
+	}
+	buf := &BufferWriter{}
+	if err := s.SavePrompt(ctx, args, buf); err != nil {
+		return errorResult(err), nil, nil
+	}
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: buf.String()},
+		},
+	}, nil, nil
+}
+
 func errorResult(err error) *mcp.CallToolResult {
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
@@ -468,11 +563,12 @@ func errorResult(err error) *mcp.CallToolResult {
 }
 
 type AddMemoryArgs struct {
-	Type    string   `json:"type" jsonschema:"Memory type (note, decision, task, context)"`
-	Title   string   `json:"title" jsonschema:"Memory title (required)"`
-	Content string   `json:"content" jsonschema:"Memory content"`
-	Source  string   `json:"source" jsonschema:"Source of the memory"`
-	Tags    []string `json:"tags" jsonschema:"Tags for the memory"`
+	Type     string   `json:"type" jsonschema:"Memory type (note, decision, task, context)"`
+	Title    string   `json:"title" jsonschema:"Memory title (required)"`
+	Content  string   `json:"content" jsonschema:"Memory content"`
+	Source   string   `json:"source" jsonschema:"Source of the memory"`
+	Tags     []string `json:"tags" jsonschema:"Tags for the memory"`
+	TopicKey string   `json:"topic_key" jsonschema:"Optional topic key; updates existing memory with same key instead of creating a duplicate"`
 }
 
 type GetMemoryArgs struct {
@@ -530,6 +626,15 @@ type DeleteRelationArgs struct {
 type FindPathArgs struct {
 	FromID string `json:"from_id" jsonschema:"Source memory ID (required)"`
 	ToID   string `json:"to_id" jsonschema:"Target memory ID (required)"`
+}
+
+type PinMemoryArgs struct {
+	ID string `json:"id" jsonschema:"Memory ID (required)"`
+}
+
+type SavePromptArgs struct {
+	Prompt    string `json:"prompt" jsonschema:"The prompt or query text (required)"`
+	SessionID string `json:"session_id" jsonschema:"Session ID for tracking"`
 }
 
 type BufferWriter struct {

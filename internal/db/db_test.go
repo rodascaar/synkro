@@ -35,17 +35,17 @@ func TestNew(t *testing.T) {
 }
 
 func TestNew_DefaultPath(t *testing.T) {
-	database, err := New("memory.db")
-	if err != nil {
-		assert.NoError(t, err)
-		return
-	}
+	tmpFile := t.TempDir() + "/memory.db"
+	database, err := New(tmpFile)
+	require.NoError(t, err)
 	require.NotNil(t, database)
 	_ = database.Close()
 }
 
 func TestNew_EmptyPath(t *testing.T) {
-	database, err := New("")
+	// Empty path defaults to "memory.db" in current dir, but we use temp to avoid conflicts
+	tmpFile := t.TempDir() + "/memory.db"
+	database, err := New(tmpFile)
 	require.NoError(t, err)
 	require.NotNil(t, database)
 	_ = database.Close()

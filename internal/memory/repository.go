@@ -51,6 +51,11 @@ func (r *Repository) Create(ctx context.Context, mem *Memory) error {
 		mem.UpdatedAt = now
 	}
 
+	pinnedInt := 0
+	if mem.Pinned {
+		pinnedInt = 1
+	}
+
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -60,9 +65,9 @@ func (r *Repository) Create(ctx context.Context, mem *Memory) error {
 	}()
 
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO memories (id, created_at, updated_at, type, title, content, source, status, tags)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, id, mem.CreatedAt.Format(time.RFC3339), mem.UpdatedAt.Format(time.RFC3339), mem.Type, mem.Title, mem.Content, sourcePtrVal(mem.Source), mem.Status, strings.Join(mem.Tags, "|"))
+		INSERT INTO memories (id, created_at, updated_at, type, title, content, source, status, tags, topic_key, pinned)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, id, mem.CreatedAt.Format(time.RFC3339), mem.UpdatedAt.Format(time.RFC3339), mem.Type, mem.Title, mem.Content, sourcePtrVal(mem.Source), mem.Status, strings.Join(mem.Tags, "|"), mem.TopicKey, pinnedInt)
 	if err != nil {
 		return err
 	}
@@ -87,6 +92,21 @@ func (r *Repository) Create(ctx context.Context, mem *Memory) error {
 	return nil
 }
 
+// Upsert crea una memoria nueva o actualiza una existente por topic_key.
+// Si mem.TopicKey no está vacío y existe una memoria activa con esa clave,
+// la actualiza; en caso contrario, crea una nueva.
+func (r *Repository) Upsert(ctx context.Context, mem *Memory) error {
+	if mem.TopicKey != "" {
+		if existing, err := r.GetByTopicKey(ctx, mem.TopicKey); err != nil {
+			return err
+		} else if existing != nil {
+			mem.ID = existing.ID
+			return r.UpdateMemory(ctx, mem)
+		}
+	}
+	return r.Create(ctx, mem)
+}
+
 func (r *Repository) saveEmbedding(ctx context.Context, exec db.Executor, memoryID string, embedding []float32) error {
 	_, err := exec.ExecContext(ctx, `
 		INSERT INTO memory_embeddings (memory_id, embedding, created_at)
@@ -98,7 +118,7 @@ func (r *Repository) saveEmbedding(ctx context.Context, exec db.Executor, memory
 
 func (r *Repository) Get(ctx context.Context, id string) (*Memory, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, created_at, updated_at, type, title, content, COALESCE(source, ''), status, COALESCE(tags, '')
+		SELECT id, created_at, updated_at, type, title, content, COALESCE(source, ''), status, COALESCE(tags, ''), COALESCE(topic_key, ''), pinned
 		FROM memories WHERE id = ?
 	`, id)
 	mem, err := scanMemory(row)
@@ -136,7 +156,7 @@ func (r *Repository) GetMany(ctx context.Context, ids []string) ([]*Memory, erro
 	}
 
 	query := `
-		SELECT id, created_at, updated_at, type, title, content, COALESCE(source, ''), status, COALESCE(tags, '')
+		SELECT id, created_at, updated_at, type, title, content, COALESCE(source, ''), status, COALESCE(tags, ''), COALESCE(topic_key, ''), pinned
 		FROM memories WHERE id IN (` + strings.Join(placeholders[:j], ",") + `)`
 
 	rows, err := r.db.QueryContext(ctx, query, args[:j]...)
@@ -227,7 +247,7 @@ func (r *Repository) searchWithBM25(ctx context.Context, query string, filter Hy
 	where, args := buildFilterWhere(filter)
 
 	sqlQuery := fmt.Sprintf(`
-		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, ''), rank
+		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, ''), COALESCE(m.topic_key, ''), m.pinned, rank
 		FROM memories m
 		INNER JOIN memories_fts f ON m.id = f.id
 		%s AND memories_fts MATCH ?
@@ -263,11 +283,11 @@ func (r *Repository) scoreByVector(ctx context.Context, queryEmbedding []float32
 	where, args := buildFilterWhere(filter)
 
 	sqlQuery := fmt.Sprintf(`
-		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, ''), e.embedding
+		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, ''), COALESCE(m.topic_key, ''), m.pinned, e.embedding
 		FROM memories m
 		INNER JOIN memory_embeddings e ON m.id = e.memory_id
 		%s
-		ORDER BY m.created_at DESC
+		ORDER BY m.pinned DESC, m.created_at DESC
 		LIMIT ?
 	`, where)
 	args = append(args, limit)
@@ -393,10 +413,10 @@ func (r *Repository) list(ctx context.Context, filter MemoryFilter) ([]*Memory, 
 	}
 
 	sqlQuery := fmt.Sprintf(`
-		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, '')
+		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, ''), COALESCE(m.topic_key, ''), m.pinned
 		FROM memories m
 		%s
-		ORDER BY m.created_at DESC
+		ORDER BY m.pinned DESC, m.created_at DESC
 		LIMIT ?
 	`, where)
 	args = append(args, limit)
@@ -480,6 +500,30 @@ func (r *Repository) Update(ctx context.Context, id string, update *MemoryUpdate
 	return tx.Commit()
 }
 
+func (r *Repository) UpdateMemory(ctx context.Context, mem *Memory) error {
+	source := sourcePtrVal(mem.Source)
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE memories
+		SET title = ?, content = ?, type = ?, source = ?, status = ?, tags = ?, topic_key = ?, updated_at = ?
+		WHERE id = ?
+	`, mem.Title, mem.Content, mem.Type, source, mem.Status, strings.Join(mem.Tags, "|"), mem.TopicKey, now, mem.ID)
+	if err != nil {
+		return err
+	}
+
+	if r.embeddingGenerator != nil {
+		if embedding, err := r.embeddingGenerator.Generate(ctx, mem.Title+" "+mem.Content); err == nil {
+			if saveErr := r.saveEmbedding(ctx, r.db, mem.ID, embedding); saveErr != nil {
+				log.Printf("warning: failed to save embedding for %s: %v", mem.ID, saveErr)
+			}
+		} else {
+			log.Printf("warning: failed to generate embedding for %s: %v", mem.ID, err)
+		}
+	}
+	return nil
+}
+
 func (r *Repository) GetByTag(ctx context.Context, tag string, filter MemoryFilter) ([]*Memory, error) {
 	where := "WHERE instr('|' || m.tags || '|', ?) > 0"
 	args := []interface{}{"|" + tag + "|"}
@@ -499,10 +543,10 @@ func (r *Repository) GetByTag(ctx context.Context, tag string, filter MemoryFilt
 	}
 
 	sqlQuery := fmt.Sprintf(`
-		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, '')
+		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, ''), COALESCE(m.topic_key, ''), m.pinned
 		FROM memories m
 		%s
-		ORDER BY m.created_at DESC
+		ORDER BY m.pinned DESC, m.created_at DESC
 		LIMIT ?
 	`, where)
 	args = append(args, limit)
@@ -529,37 +573,103 @@ func (r *Repository) Delete(ctx context.Context, id string) error {
 	return err
 }
 
-// MaxSimilarity devuelve la similitud coseno máxima entre el texto dado y las
-// memorias existentes. Útil para detectar duplicados al agregar una memoria.
-func (r *Repository) MaxSimilarity(ctx context.Context, text string) (float64, error) {
+// SimilarMemory representa una memoria existente y su similitud coseno con un texto.
+type SimilarMemory struct {
+	Memory *Memory
+	Score  float64
+}
+
+// SimilarMemories devuelve las memorias activas cuyo coseno con el texto supera
+// el umbral, ordenadas de mayor a menor similitud y limitadas a `limit`.
+func (r *Repository) SimilarMemories(ctx context.Context, text string, threshold float64, limit int) ([]SimilarMemory, error) {
 	if r.embeddingGenerator == nil {
-		return 0, nil
+		return nil, nil
 	}
 
 	embedding, err := r.embeddingGenerator.Generate(ctx, text)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	rows, err := r.db.QueryContext(ctx, `SELECT embedding FROM memory_embeddings`)
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, ''), COALESCE(m.topic_key, ''), m.pinned, e.embedding
+		FROM memory_embeddings e
+		INNER JOIN memories m ON m.id = e.memory_id
+		WHERE m.status = 'active'
+	`)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	maxScore := 0.0
+	var similar []SimilarMemory
 	for rows.Next() {
-		var blob []byte
-		if err := rows.Scan(&blob); err != nil {
+		mem, embeddingBytes, err := scanMemoryWithEmbedding(rows)
+		if err != nil {
 			continue
 		}
-		if memEmbedding := embeddings.DeserializeEmbedding(blob); memEmbedding != nil {
-			if score := float64(embeddings.CosineSimilarity(embedding, memEmbedding)); score > maxScore {
-				maxScore = score
-			}
+		if embeddingBytes == nil {
+			continue
+		}
+		memEmbedding := embeddings.DeserializeEmbedding(embeddingBytes)
+		if memEmbedding == nil {
+			continue
+		}
+		score := float64(embeddings.CosineSimilarity(embedding, memEmbedding))
+		if score >= threshold {
+			similar = append(similar, SimilarMemory{Memory: mem, Score: score})
 		}
 	}
-	return maxScore, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	sort.Slice(similar, func(i, j int) bool {
+		return similar[i].Score > similar[j].Score
+	})
+	if limit > 0 && len(similar) > limit {
+		similar = similar[:limit]
+	}
+	return similar, nil
+}
+
+// MaxSimilarity devuelve la similitud coseno máxima entre el texto y las
+// memorias existentes. Útil para detectar duplicados al agregar una memoria.
+func (r *Repository) MaxSimilarity(ctx context.Context, text string) (float64, error) {
+	similar, err := r.SimilarMemories(ctx, text, 0, 1)
+	if err != nil {
+		return 0, err
+	}
+	if len(similar) == 0 {
+		return 0, nil
+	}
+	return similar[0].Score, nil
+}
+
+// GetByTopicKey devuelve la memoria activa con la clave de tema dada, si existe.
+func (r *Repository) GetByTopicKey(ctx context.Context, topicKey string) (*Memory, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, created_at, updated_at, type, title, content, COALESCE(source, ''), status, COALESCE(tags, ''), COALESCE(topic_key, ''), pinned
+		FROM memories WHERE topic_key = ? AND status = 'active'
+	`, topicKey)
+	mem, err := scanMemory(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return mem, nil
+}
+
+// Pin marca o desmarca una memoria como fijada.
+func (r *Repository) Pin(ctx context.Context, id string, pinned bool) error {
+	pinnedInt := 0
+	if pinned {
+		pinnedInt = 1
+	}
+	_, err := r.db.ExecContext(ctx, `UPDATE memories SET pinned = ?, updated_at = ? WHERE id = ?`, pinnedInt, time.Now().UTC().Format(time.RFC3339), id)
+	return err
 }
 
 // DeleteAll borra todas las memorias y sesiones. Los embeddings, relaciones y
@@ -646,43 +756,48 @@ type rowScanner interface {
 
 func scanMemory(row rowScanner) (*Memory, error) {
 	mem := &Memory{}
-	var tagsStr, createdAtStr, updatedAtStr string
+	var tagsStr, topicKeyStr, createdAtStr, updatedAtStr string
 	var source sql.NullString
-	if err := row.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr); err != nil {
+	var pinned int
+	if err := row.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr, &topicKeyStr, &pinned); err != nil {
 		return nil, err
 	}
-	return buildMemory(mem, createdAtStr, updatedAtStr, source, tagsStr), nil
+	return buildMemory(mem, createdAtStr, updatedAtStr, source, tagsStr, topicKeyStr, pinned), nil
 }
 
 func scanMemoryWithRank(row rowScanner) (*Memory, float64, error) {
 	mem := &Memory{}
-	var tagsStr, createdAtStr, updatedAtStr string
+	var tagsStr, topicKeyStr, createdAtStr, updatedAtStr string
 	var source sql.NullString
+	var pinned int
 	var rank float64
-	if err := row.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr, &rank); err != nil {
+	if err := row.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr, &topicKeyStr, &pinned, &rank); err != nil {
 		return nil, 0, err
 	}
-	return buildMemory(mem, createdAtStr, updatedAtStr, source, tagsStr), rank, nil
+	return buildMemory(mem, createdAtStr, updatedAtStr, source, tagsStr, topicKeyStr, pinned), rank, nil
 }
 
 func scanMemoryWithEmbedding(row rowScanner) (*Memory, []byte, error) {
 	mem := &Memory{}
-	var tagsStr, createdAtStr, updatedAtStr string
+	var tagsStr, topicKeyStr, createdAtStr, updatedAtStr string
 	var source sql.NullString
+	var pinned int
 	var embedding []byte
-	if err := row.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr, &embedding); err != nil {
+	if err := row.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr, &topicKeyStr, &pinned, &embedding); err != nil {
 		return nil, nil, err
 	}
-	return buildMemory(mem, createdAtStr, updatedAtStr, source, tagsStr), embedding, nil
+	return buildMemory(mem, createdAtStr, updatedAtStr, source, tagsStr, topicKeyStr, pinned), embedding, nil
 }
 
-func buildMemory(mem *Memory, createdAtStr, updatedAtStr string, source sql.NullString, tagsStr string) *Memory {
+func buildMemory(mem *Memory, createdAtStr, updatedAtStr string, source sql.NullString, tagsStr, topicKeyStr string, pinned int) *Memory {
 	mem.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
 	mem.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
 	mem.Source = scanSource(source)
 	if tagsStr != "" {
 		mem.Tags = strings.Split(tagsStr, "|")
 	}
+	mem.TopicKey = topicKeyStr
+	mem.Pinned = pinned != 0
 	return mem
 }
 

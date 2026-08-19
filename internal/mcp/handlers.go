@@ -71,12 +71,13 @@ func (s *Server) AddMemoryWithWriter(ctx context.Context, input AddMemoryInput, 
 	}
 
 	mem := &memory.Memory{
-		Type:    input.Type,
-		Title:   input.Title,
-		Content: input.Content,
-		Source:  sourcePtr(input.Source),
-		Status:  "active",
-		Tags:    input.Tags,
+		Type:     input.Type,
+		Title:    input.Title,
+		Content:  input.Content,
+		Source:   sourcePtr(input.Source),
+		Status:   "active",
+		Tags:     input.Tags,
+		TopicKey: input.TopicKey,
 	}
 
 	similarity := 0.0
@@ -84,7 +85,7 @@ func (s *Server) AddMemoryWithWriter(ctx context.Context, input AddMemoryInput, 
 		similarity = sim
 	}
 
-	if err := s.repo.Create(ctx, mem); err != nil {
+	if err := s.repo.Upsert(ctx, mem); err != nil {
 		return synkroerrors.Wrap(err, synkroerrors.ErrEmbeddingFailed.Code, "Error creating memory", synkroerrors.ErrEmbeddingFailed.Help)
 	}
 
@@ -570,6 +571,76 @@ func (s *Server) FindPath(ctx context.Context, input FindPathInput, w io.Writer)
 
 	return writeJSON(w, response)
 }
+
+func (s *Server) Pin(ctx context.Context, input PinMemoryInput, w io.Writer) error {
+	_, err := s.repo.Get(ctx, input.ID)
+	if err != nil {
+		return synkroerrors.Wrap(err, synkroerrors.CodeDBError, "Error finding memory", "Check the memory ID")
+	}
+	if err := s.repo.Pin(ctx, input.ID, true); err != nil {
+		return synkroerrors.Wrap(err, synkroerrors.CodeDBError, "Error pinning memory", "Try again")
+	}
+	return writeJSON(w, map[string]interface{}{"success": true, "action": "pinned", "memory_id": input.ID})
+}
+
+func (s *Server) Unpin(ctx context.Context, input PinMemoryInput, w io.Writer) error {
+	if err := s.repo.Pin(ctx, input.ID, false); err != nil {
+		return synkroerrors.Wrap(err, synkroerrors.CodeDBError, "Error unpinning memory", "Try again")
+	}
+	return writeJSON(w, map[string]interface{}{"success": true, "action": "unpinned", "memory_id": input.ID})
+}
+
+// SessionTracker interface for persisting prompt memories across sessions.
+type SessionTracker interface {
+	SavePromptPrompt(ctx context.Context, sessionID, prompt string) error
+}
+
+// SavePrompt records a user prompt as a context memory, optionally tied to a session.
+func (s *Server) SavePrompt(ctx context.Context, input SavePromptInput, w io.Writer) error {
+	mem := &memory.Memory{
+		Type:     "context",
+		Title:    "Prompt: " + input.Prompt,
+		Content:  input.Prompt,
+		Status:   "active",
+		TopicKey: "prompt-" + input.SessionID,
+	}
+
+	similarity := 0.0
+	if sim, err := s.repo.MaxSimilarity(ctx, mem.Title+" "+mem.Content); err == nil {
+		similarity = sim
+	}
+
+	if existing, err := s.repo.GetByTopicKey(ctx, mem.TopicKey); err != nil {
+		return synkroerrors.Wrap(err, synkroerrors.CodeDBError, "Error checking existing prompt", "Try again")
+	} else if existing != nil {
+		mem.ID = existing.ID
+		if err := s.repo.UpdateMemory(ctx, mem); err != nil {
+			return synkroerrors.Wrap(err, synkroerrors.CodeDBError, "Error updating prompt memory", "Try again")
+		}
+		return writeJSON(w, map[string]interface{}{
+			"success":          true,
+			"memory_id":        mem.ID,
+			"updated":          true,
+			"similarity_score": similarity,
+			"embedding_used":   s.embeddingType,
+		})
+	}
+
+	if err := s.repo.Create(ctx, mem); err != nil {
+		return synkroerrors.Wrap(err, synkroerrors.ErrEmbeddingFailed.Code, "Error creating prompt memory", synkroerrors.ErrEmbeddingFailed.Help)
+	}
+
+	return writeJSON(w, map[string]interface{}{
+		"success":          true,
+		"memory_id":        mem.ID,
+		"similarity_score": similarity,
+		"embedding_used":   s.embeddingType,
+	})
+}
+
+type PinMemoryInput = PinMemoryArgs
+
+type SavePromptInput = SavePromptArgs
 
 type ActivateContextResponse struct {
 	PrimaryResults     []*ContextResultItem `json:"primary_results"`

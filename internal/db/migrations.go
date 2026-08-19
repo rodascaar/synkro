@@ -99,6 +99,37 @@ func getMigrations() []Migration {
 				return nil
 			},
 		},
+		{
+			Version: 6,
+			Name:    "add_topic_key_and_pinned",
+			Up: func(ctx context.Context, db Executor) error {
+				var count int
+				err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('memories') WHERE name = 'topic_key'`).Scan(&count)
+				if err != nil {
+					return fmt.Errorf("failed to check topic_key column: %w", err)
+				}
+				if count == 0 {
+					if _, err := db.ExecContext(ctx, `ALTER TABLE memories ADD COLUMN topic_key TEXT`); err != nil {
+						return fmt.Errorf("failed to add topic_key column: %w", err)
+					}
+				}
+
+				err = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('memories') WHERE name = 'pinned'`).Scan(&count)
+				if err != nil {
+					return fmt.Errorf("failed to check pinned column: %w", err)
+				}
+				if count == 0 {
+					if _, err := db.ExecContext(ctx, `ALTER TABLE memories ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`); err != nil {
+						return fmt.Errorf("failed to add pinned column: %w", err)
+					}
+				}
+
+				if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_memories_topic_key ON memories(topic_key)`); err != nil {
+					return fmt.Errorf("failed to create topic_key index: %w", err)
+				}
+				return nil
+			},
+		},
 	}
 }
 

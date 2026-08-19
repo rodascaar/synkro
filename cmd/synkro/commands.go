@@ -36,6 +36,7 @@ var addCmd = &cobra.Command{
 		content, _ := cmd.Flags().GetString("content")
 		source, _ := cmd.Flags().GetString("source")
 		tags, _ := cmd.Flags().GetStringSlice("tags")
+		topicKey, _ := cmd.Flags().GetString("topic-key")
 
 		if title == "" {
 			fmt.Fprintln(os.Stderr, "Error: title is required")
@@ -70,15 +71,16 @@ var addCmd = &cobra.Command{
 		repo.SetEmbeddingGenerator(embedMgr)
 
 		mem := &memory.Memory{
-			Type:    memType,
-			Title:   title,
-			Content: content,
-			Source:  strToPtr(source),
-			Status:  "active",
-			Tags:    tags,
+			Type:     memType,
+			Title:    title,
+			Content:  content,
+			Source:   strToPtr(source),
+			Status:   "active",
+			Tags:     tags,
+			TopicKey: topicKey,
 		}
 
-		if err := repo.Create(context.Background(), mem); err != nil {
+		if err := repo.Upsert(context.Background(), mem); err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating memory: %v\n", err)
 			os.Exit(1)
 		}
@@ -491,8 +493,9 @@ func init() {
 	addCmd.Flags().String("type", "note", "Memory type (note, decision, task, context)")
 	addCmd.Flags().String("title", "", "Memory title (required)")
 	addCmd.Flags().String("content", "", "Memory content")
-	addCmd.Flags().String("source", "", "Memory source")
-	addCmd.Flags().StringSlice("tags", nil, "Comma-separated tags")
+		addCmd.Flags().String("source", "", "Memory source")
+		addCmd.Flags().StringSlice("tags", nil, "Comma-separated tags")
+		addCmd.Flags().String("topic-key", "", "Topic key for upsert (updates existing memory with same key)")
 
 	rootCmd.AddCommand(listCmd)
 	listCmd.Flags().String("type", "", "Filter by type")
