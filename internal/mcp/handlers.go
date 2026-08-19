@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	synkroerrors "github.com/rodascaar/synkro/internal/errors"
@@ -35,8 +36,9 @@ type DeleteRelationInput = DeleteRelationArgs
 type FindPathInput = FindPathArgs
 
 // searchSimilarityThreshold descarta resultados solo-vector con coseno menor,
-// reduciendo ruido en búsquedas con pocas memorias.
-const searchSimilarityThreshold = 0.2
+// reduciendo ruido en búsquedas con pocas memorias. Alineado con el umbral
+// del pruner de contexto.
+const searchSimilarityThreshold = 0.3
 
 func (s *Server) AddMemory(ctx context.Context, input AddMemoryInput) ([]byte, error) {
 	var buf bytes.Buffer
@@ -183,6 +185,9 @@ func (s *Server) SearchMemory(ctx context.Context, input SearchMemoryInput, w io
 		Type:   input.Type,
 		Status: input.Status,
 		Limit:  input.Limit,
+	}
+	if filter.Status == "" {
+		filter.Status = "active"
 	}
 
 	results, err := s.repo.HybridSearch(ctx, input.Query, input.Limit, filter)
@@ -371,12 +376,20 @@ func (s *Server) ActivateContext(ctx context.Context, input ActivateContextInput
 		lowPriority = s.contextPruner.Prune(lowPriority, input.Query)
 	}
 
+	totalTokens := 0
+	for _, result := range prioritized {
+		totalTokens += countTokens(result.Memory.Title + " " + result.Memory.Content)
+	}
+	for _, result := range lowPriority {
+		totalTokens += countTokens(result.Memory.Title + " " + result.Memory.Content)
+	}
+
 	response := ActivateContextResponse{
 		Query:              input.Query,
 		SessionID:          input.SessionID,
 		DuplicateDetected:  duplicateDetected,
 		MaxTokens:          input.MaxTokens,
-		TotalTokens:        0,
+		TotalTokens:        totalTokens,
 		PrimaryResults:     convertToContextItems(prioritized, false),
 		LowPriorityResults: convertToContextItems(lowPriority, true),
 	}
@@ -582,7 +595,7 @@ type MemoryResult struct {
 	Type      string   `json:"type"`
 	Title     string   `json:"title"`
 	Content   string   `json:"content"`
-	Source    string   `json:"source"`
+	Source    *string  `json:"source"`
 	Status    string   `json:"status"`
 	Tags      []string `json:"tags"`
 	CreatedAt string   `json:"created_at"`
@@ -606,7 +619,7 @@ func convertToContextItems(results []*memory.HybridSearchResult, isReminder bool
 				Type:      result.Memory.Type,
 				Title:     result.Memory.Title,
 				Content:   result.Memory.Content,
-				Source:    strPtrVal(result.Memory.Source),
+				Source:    result.Memory.Source,
 				Status:    result.Memory.Status,
 				Tags:      result.Memory.Tags,
 				CreatedAt: result.Memory.CreatedAt.Format(time.RFC3339),
@@ -633,6 +646,12 @@ func getConfidenceLevel(similarity float64) string {
 	}
 }
 
+// countTokens estima el número de tokens como la cantidad de palabras,
+// consistente con el pruner de contexto.
+func countTokens(text string) int {
+	return len(strings.Fields(text))
+}
+
 func writeJSON(w io.Writer, v interface{}) error {
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
@@ -640,13 +659,6 @@ func writeJSON(w io.Writer, v interface{}) error {
 	}
 	_, err = fmt.Fprintf(w, "%s\n", data)
 	return err
-}
-
-func strPtrVal(s *string) string {
-	if s != nil {
-		return *s
-	}
-	return ""
 }
 
 func sourcePtr(s string) *string {

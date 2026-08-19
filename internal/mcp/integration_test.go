@@ -443,3 +443,49 @@ func TestHandlers_ActivateContext_LowSimilarity(t *testing.T) {
 
 	assert.Contains(t, buf.String(), "Low similarity")
 }
+
+func TestHandlers_SearchMemories_DefaultActive(t *testing.T) {
+	server, memRepo := setupTestServer(t)
+	ctx := context.Background()
+
+	_ = memRepo.Create(ctx, &memory.Memory{
+		Type: "note", Title: "Database Active", Content: "database indexing", Status: "active",
+	})
+	_ = memRepo.Create(ctx, &memory.Memory{
+		Type: "note", Title: "Database Archived", Content: "database backup", Status: "archived",
+	})
+
+	var buf mcp.BufferWriter
+	err := server.SearchMemory(context.Background(), mcp.SearchMemoryInput{Query: "database", Limit: 10}, &buf)
+	require.NoError(t, err)
+
+	var response map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(buf.String()), &response))
+
+	memories := response["memories"].([]interface{})
+	assert.Len(t, memories, 1)
+	assert.Equal(t, "Database Active", memories[0].(map[string]interface{})["title"])
+}
+
+func TestHandlers_ActivateContext_CountsTokens(t *testing.T) {
+	server, memRepo := setupTestServerWithGraph(t)
+	memRepo.SetEmbeddingGenerator(embeddings.NewTFIDFEmbeddingGenerator(nil))
+	ctx := context.Background()
+
+	mem := &memory.Memory{Type: "note", Title: "Token Counting", Content: "This is a test content with several words to count", Status: "active"}
+	require.NoError(t, memRepo.Create(ctx, mem))
+
+	var buf mcp.BufferWriter
+	err := server.ActivateContext(ctx, mcp.ActivateContextInput{
+		Query:     "token counting words",
+		SessionID: "token-session",
+	}, &buf)
+	require.NoError(t, err)
+
+	var response map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(buf.String()), &response))
+
+	totalTokens, ok := response["total_tokens"].(float64)
+	require.True(t, ok)
+	assert.Greater(t, totalTokens, float64(0))
+}
