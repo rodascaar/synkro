@@ -198,6 +198,30 @@ func TestRepository_DeleteAll(t *testing.T) {
 	assert.Equal(t, 0, sessionCount)
 }
 
+func TestRepository_MaxSimilarity(t *testing.T) {
+	d, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := memory.NewRepository(d.DB())
+	repo.SetEmbeddingGenerator(embeddings.NewTFIDFEmbeddingGenerator(nil))
+
+	mem := &memory.Memory{
+		Type:    "note",
+		Title:   "Quantum Physics",
+		Content: "The study of quantum entanglement and superposition.",
+		Status:  "active",
+	}
+	require.NoError(t, repo.Create(context.Background(), mem))
+
+	sim, err := repo.MaxSimilarity(context.Background(), "Quantum physics entanglement and superposition")
+	assert.NoError(t, err)
+	assert.Greater(t, sim, 0.5)
+
+	sim, err = repo.MaxSimilarity(context.Background(), "cooking recipes for pasta and pizza")
+	assert.NoError(t, err)
+	assert.Less(t, sim, 0.5)
+}
+
 func TestRepository_HybridSearch(t *testing.T) {
 	d, cleanup := setupTestDB(t)
 	defer cleanup()

@@ -34,6 +34,10 @@ type DeleteRelationInput = DeleteRelationArgs
 
 type FindPathInput = FindPathArgs
 
+// searchSimilarityThreshold descarta resultados solo-vector con coseno menor,
+// reduciendo ruido en búsquedas con pocas memorias.
+const searchSimilarityThreshold = 0.2
+
 func (s *Server) AddMemory(ctx context.Context, input AddMemoryInput) ([]byte, error) {
 	var buf bytes.Buffer
 	if err := s.AddMemoryWithWriter(ctx, input, &buf); err != nil {
@@ -73,6 +77,11 @@ func (s *Server) AddMemoryWithWriter(ctx context.Context, input AddMemoryInput, 
 		Tags:    input.Tags,
 	}
 
+	similarity := 0.0
+	if sim, err := s.repo.MaxSimilarity(ctx, mem.Title+" "+mem.Content); err == nil {
+		similarity = sim
+	}
+
 	if err := s.repo.Create(ctx, mem); err != nil {
 		return synkroerrors.Wrap(err, synkroerrors.ErrEmbeddingFailed.Code, "Error creating memory", synkroerrors.ErrEmbeddingFailed.Help)
 	}
@@ -80,7 +89,7 @@ func (s *Server) AddMemoryWithWriter(ctx context.Context, input AddMemoryInput, 
 	response := map[string]interface{}{
 		"success":          true,
 		"memory_id":        mem.ID,
-		"similarity_score": 0.0,
+		"similarity_score": similarity,
 		"embedding_used":   s.embeddingType,
 	}
 
@@ -170,15 +179,23 @@ func (s *Server) SearchMemory(ctx context.Context, input SearchMemoryInput, w io
 		)
 	}
 
-	filter := memory.MemoryFilter{
+	filter := memory.HybridSearchFilter{
 		Type:   input.Type,
 		Status: input.Status,
 		Limit:  input.Limit,
 	}
 
-	memories, err := s.repo.Search(ctx, input.Query, filter)
+	results, err := s.repo.HybridSearch(ctx, input.Query, input.Limit, filter)
 	if err != nil {
 		return synkroerrors.Wrap(err, synkroerrors.ErrFTS5Query.Code, "Error searching memories", synkroerrors.ErrFTS5Query.Help)
+	}
+
+	memories := make([]*memory.Memory, 0, len(results))
+	for _, res := range results {
+		if res.MatchType == "vector" && res.VectorScore < searchSimilarityThreshold {
+			continue
+		}
+		memories = append(memories, res.Memory)
 	}
 
 	response := map[string]interface{}{

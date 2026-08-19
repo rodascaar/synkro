@@ -529,6 +529,39 @@ func (r *Repository) Delete(ctx context.Context, id string) error {
 	return err
 }
 
+// MaxSimilarity devuelve la similitud coseno máxima entre el texto dado y las
+// memorias existentes. Útil para detectar duplicados al agregar una memoria.
+func (r *Repository) MaxSimilarity(ctx context.Context, text string) (float64, error) {
+	if r.embeddingGenerator == nil {
+		return 0, nil
+	}
+
+	embedding, err := r.embeddingGenerator.Generate(ctx, text)
+	if err != nil {
+		return 0, err
+	}
+
+	rows, err := r.db.QueryContext(ctx, `SELECT embedding FROM memory_embeddings`)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	maxScore := 0.0
+	for rows.Next() {
+		var blob []byte
+		if err := rows.Scan(&blob); err != nil {
+			continue
+		}
+		if memEmbedding := embeddings.DeserializeEmbedding(blob); memEmbedding != nil {
+			if score := float64(embeddings.CosineSimilarity(embedding, memEmbedding)); score > maxScore {
+				maxScore = score
+			}
+		}
+	}
+	return maxScore, rows.Err()
+}
+
 // DeleteAll borra todas las memorias y sesiones. Los embeddings, relaciones y
 // entregas se eliminan en cascada vía foreign keys.
 func (r *Repository) DeleteAll(ctx context.Context) error {
@@ -671,7 +704,7 @@ func sanitizeFTS5Query(query string) string {
 }
 
 func scanSource(ns sql.NullString) *string {
-	if ns.Valid {
+	if ns.Valid && ns.String != "" {
 		return &ns.String
 	}
 	return nil

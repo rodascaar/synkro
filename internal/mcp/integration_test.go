@@ -123,6 +123,34 @@ func TestHandlers_SearchMemories(t *testing.T) {
 	assert.True(t, response["count"].(float64) >= 1)
 }
 
+func TestHandlers_SearchMemories_FiltersLowSimilarity(t *testing.T) {
+	server, memRepo := setupTestServer(t)
+	memRepo.SetEmbeddingGenerator(embeddings.NewTFIDFEmbeddingGenerator(nil))
+
+	ctx := context.Background()
+	_ = memRepo.Create(ctx, &memory.Memory{
+		Type: "note", Title: "Database Design", Content: "PostgreSQL architecture and indexing patterns", Status: "active",
+	})
+	_ = memRepo.Create(ctx, &memory.Memory{
+		Type: "note", Title: "Cooking Recipe", Content: "How to bake a chocolate cake with frosting", Status: "active",
+	})
+
+	var buf mcp.BufferWriter
+	err := server.SearchMemory(context.Background(), mcp.SearchMemoryInput{Query: "database architecture", Limit: 10}, &buf)
+	require.NoError(t, err)
+
+	var response map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(buf.String()), &response))
+
+	memories := response["memories"].([]interface{})
+	assert.GreaterOrEqual(t, len(memories), 1)
+
+	for _, m := range memories {
+		title := m.(map[string]interface{})["title"].(string)
+		assert.NotEqual(t, "Cooking Recipe", title, "unrelated low-similarity memory should be filtered")
+	}
+}
+
 func TestHandlers_UpdateMemory(t *testing.T) {
 	server, memRepo := setupTestServer(t)
 
