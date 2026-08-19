@@ -162,17 +162,20 @@ func TestSessionTracker_WithDB(t *testing.T) {
 	tracker := NewSessionTracker(repo)
 	ctx := context.Background()
 
-	session := tracker.GetOrCreate(ctx, "s1")
-	session.LastQuery = "test query"
-	session.LastQueryAt = time.Now()
-	session.DeliveredMemories["mem1"] = &DeliveredMemory{MemoryID: "mem1", DeliveredAt: time.Now()}
-
-	err := tracker.Persist(ctx)
+	_, err := database.DB().ExecContext(ctx, `
+		INSERT INTO memories (id, type, title, content, status, created_at, updated_at)
+		VALUES ('mem1', 'note', 'T', 'C', 'active', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')
+	`)
 	require.NoError(t, err)
+
+	tracker.GetOrCreate(ctx, "s1")
+	tracker.UpdateLastQuery(ctx, "s1", "test query")
+	tracker.MarkAsDelivered(ctx, "s1", "mem1")
 
 	tracker2 := NewSessionTracker(repo)
 	got := tracker2.GetOrCreate(ctx, "s1")
 	assert.Equal(t, "test query", got.LastQuery)
+	assert.NotNil(t, got.DeliveredMemories["mem1"])
 }
 
 func TestSessionTracker_GetOrCreate_Idempotent(t *testing.T) {

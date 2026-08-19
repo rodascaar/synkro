@@ -25,11 +25,6 @@ var rootCmd = &cobra.Command{
 	Use:   "synkro",
 	Short: "Synkro memory management",
 	Long:  "Synkro - Motor de Contexto Inteligente para LLMs",
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		if cfg.CheckUpdateOnStart && cmd.Name() != "update" && cmd.Name() != "self-update" && cmd.Name() != "mcp" {
-			go checkForUpdatesAsync()
-		}
-	},
 }
 
 var addCmd = &cobra.Command{
@@ -614,30 +609,6 @@ var mcpCmd = &cobra.Command{
 
 func Execute() error {
 	return rootCmd.Execute()
-}
-
-func checkForUpdatesAsync() {
-	// Solo verificar una vez cada 24 horas (86400 segundos)
-	now := int(time.Now().Unix())
-	if now-cfg.LastUpdateCheck < 86400 {
-		return
-	}
-
-	latest, err := checkLatestRelease()
-	if err != nil {
-		return
-	}
-
-	currentVersion := fmt.Sprintf("v%s", Version)
-	if latest.TagName != currentVersion {
-		fmt.Printf("\n🔄 Update available: %s (current: %s)\n", latest.TagName, Version)
-		fmt.Printf("📦 Download: %s\n\n", latest.HTMLURL)
-		fmt.Println("Run 'synkro update' to install.")
-	}
-
-	// Actualizar último check
-	cfg.LastUpdateCheck = now
-	_ = config.Save(cfg)
 }
 
 func strToPtr(s string) *string {

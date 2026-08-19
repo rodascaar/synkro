@@ -11,11 +11,7 @@ type WordPieceTokenizer struct {
 	unkToken  string
 	clsToken  string
 	sepToken  string
-	padToken  string
 	unkID     int
-	clsID     int
-	sepID     int
-	padID     int
 	maxSeqLen int
 }
 
@@ -35,24 +31,13 @@ func NewWordPieceTokenizer(vocabPath string, maxSeqLen int) (*WordPieceTokenizer
 
 	t := &WordPieceTokenizer{
 		vocab:     vocab,
-		unkToken:  "[UNK]",
+unkToken:  "[UNK]",
 		clsToken:  "[CLS]",
 		sepToken:  "[SEP]",
-		padToken:  "[PAD]",
-		maxSeqLen: maxSeqLen,
 	}
 
 	if id, ok := vocab["[UNK]"]; ok {
 		t.unkID = id
-	}
-	if id, ok := vocab["[CLS]"]; ok {
-		t.clsID = id
-	}
-	if id, ok := vocab["[SEP]"]; ok {
-		t.sepID = id
-	}
-	if id, ok := vocab["[PAD]"]; ok {
-		t.padID = id
 	}
 
 	if t.maxSeqLen <= 0 {
@@ -139,14 +124,6 @@ func (t *WordPieceTokenizer) wordPiece(word string) []string {
 	}
 
 	return tokens
-}
-
-func (t *WordPieceTokenizer) MaxSeqLen() int {
-	return t.maxSeqLen
-}
-
-func (t *WordPieceTokenizer) PadID() int64 {
-	return int64(t.padID)
 }
 
 func cleanText(text string) string {

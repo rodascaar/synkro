@@ -46,26 +46,27 @@ make test
 cmd/synkro/          # CLI entrypoint (main.go, commands.go, update.go)
 internal/            # All internal packages
   ├── config/       # Environment configuration (SYNKRO_DB_PATH, etc.) + persistent config
-  ├── db/          # SQLite with FTS5 virtual tables + WAL mode + FK
+  ├── db/          # SQLite (pure-Go modernc) with FTS5 virtual tables + WAL mode + FK
   ├── errors/      # Synkro error types and display helpers
-  ├── memory/      # Memory models and repository (MATCH queries, BM25)
+  ├── memory/      # Memory models and repository (FTS5 BM25 + cosine rerank)
   ├── embeddings/  # TF-IDF + ONNX embeddings (384 dims) with WordPiece tokenizer + persistent cache
   ├── graph/       # Memory relationship graph (BFS) with repository
   ├── mcp/         # MCP Server using Go SDK official (11 tools)
   ├── pruner/      # Context pruning logic
   ├── session/     # Session tracking (in-memory + SQLite persistent)
+  ├── stopwords/   # Shared stopword list (embeddings + pruner)
   └── tui/         # Bubble Tea TUI (3 panels + Add Memory form + sidebar filters)
 memory.db           # SQLite database (created by init)
 ```
 
 ## Key Technical Details
 
-- **Go version**: 1.24 (go.mod: 1.24.2)
+- **Go version**: 1.26.7 (pinned via `toolchain` in go.mod)
 - **CLI framework**: Cobra
 - **TUI framework**: Bubble Tea + Lipgloss
-- **Database**: SQLite3 with FTS5 virtual tables, WAL mode, foreign keys
-- **Search**: FTS5 full-text with BM25 scoring + hybrid search (vectorial + FTS5)
-- **Embeddings**: 384-dim vectors using TF-IDF + N-grams with stopwords filtering, persistent cache in SQLite
+- **Database**: SQLite (pure-Go `modernc.org/sqlite`) with FTS5 virtual tables, WAL mode, foreign keys
+- **Search**: unified pipeline — FTS5 BM25 + in-memory cosine similarity rerank (no external vector extension)
+- **Embeddings**: 384-dim vectors using TF-IDF + N-grams with shared stopword filtering, persistent cache in SQLite
 - **ONNX Models**: Support for high-quality sentence-transformers models (all-MiniLM-L6-v2, paraphrase-multilingual-MiniLM-L12-v2, stsb-roberta-base-v2) with automatic download from Hugging Face
 - **MCP Server**: Fully implemented using github.com/modelcontextprotocol/go-sdk
 - **Testing**: Comprehensive test suite with ~70%+ coverage
@@ -105,19 +106,10 @@ memory.db           # SQLite database (created by init)
 ## Environment Variables
 
 ```bash
-SYNKRO_DB_PATH=memory.db           # Database location (default: memory.db)
-SYNKRO_DEBUG=true                   # Enable debug logging (default: false)
-SYNKRO_MAX_TOKENS=4000             # Default context token limit (default: 4000)
-SYNKRO_SESSION_BUFFER=20           # Ring buffer size (default: 20)
-SYNKRO_CACHE_SIZE=1000             # Embedding cache size (default: 1000)
-SYNKRO_SIMILARITY_THRESHOLD=0.5     # Minimum similarity for results (default: 0.5)
-SYNKRO_EMBEDDING_DIM=384           # Embedding dimension (default: 384)
-SYNKRO_MODEL_TYPE=tfidf             # Model type (default: tfidf) or onnx
-SYNKRO_MODEL_DIR=models             # Model download directory (default: models)
+SYNKRO_DB_PATH=memory.db                 # Database location (default: memory.db)
+SYNKRO_MODEL_TYPE=tfidf                  # Model type (default: tfidf) or onnx
+SYNKRO_MODEL_DIR=models                  # Model download directory (default: models)
 SYNKRO_PREFERRED_MODEL=all-MiniLM-L6-v2  # Default ONNX model to use
-SYNKRO_AUTO_UPDATE=true            # Enable auto-update check (default: true)
-SYNKRO_CHECK_UPDATE_ON_START=true  # Check updates on startup (default: true)
-SYNKRO_LAST_UPDATE_CHECK=0         # Timestamp of last update check (default: 0)
 ```
 
 ## Verification & Testing
@@ -158,7 +150,7 @@ go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
 ## MCP Server
 
-**FULLY IMPLEMENTED** using `github.com/modelcontextprotocol/go-sdk` v1.4.0
+**FULLY IMPLEMENTED** using `github.com/modelcontextprotocol/go-sdk` v1.4.1
 
 Available tools:
 - `add_memory` - Add new memory
@@ -204,7 +196,7 @@ Controls:
 - `github.com/charmbracelet/bubbletea` - TUI framework
 - `github.com/charmbracelet/lipgloss` - Styling
 - `github.com/spf13/cobra` - CLI
-- `github.com/mattn/go-sqlite3` - SQLite driver (CGO)
+- `modernc.org/sqlite` - SQLite driver (pure Go, no CGO)
 - `github.com/google/uuid` - UUID generation
 - `github.com/modelcontextprotocol/go-sdk` - MCP Go SDK official
 - `github.com/yalue/onnxruntime_go` - ONNX Runtime Go bindings
@@ -223,7 +215,7 @@ Controls:
 ## Important Gotchas
 
 1. **Database init**: Must run `./synkro init` before any other operations
-2. **Go version**: Requires Go 1.24+ (go.mod: 1.24.2)
+2. **Go version**: Requires Go 1.26+ (go.mod: 1.26.7, toolchain pinned)
 3. **FTS5 implemented**: Full-text search uses FTS5 virtual tables with BM25 scoring
 4. **Session tracking**: Dual storage (in-memory + SQLite) - persisted across restarts
 5. **Embedding cache**: SQLite-backed cache with SHA256 hash keys - persisted across restarts
@@ -233,5 +225,5 @@ Controls:
 9. **Environment variables**: Fully functional, loaded via `internal/config/config.go`
 10. **Tests available**: Comprehensive test suite in `*_test.go` files
 11. **Linting configured**: `.golangci.yml` with essential linters
-12. **CI/CD configured**: GitHub Actions workflow in `.github/workflows/test.yml`
+12. **CI/CD configured**: GitHub Actions workflow in `.github/workflows/ci.yml`
 

@@ -22,7 +22,6 @@ func BenchmarkRepository_Search(b *testing.B) {
 			Type:    "note",
 			Title:   fmt.Sprintf("Title %d", i),
 			Content: fmt.Sprintf("Content %d with some more text", i),
-			Source:  sourcePtr("test"),
 			Status:  "active",
 		}
 		_ = repo.Create(context.Background(), mem)
@@ -48,7 +47,6 @@ func BenchmarkRepository_HybridSearch(b *testing.B) {
 			Type:    "note",
 			Title:   fmt.Sprintf("Title %d", i),
 			Content: fmt.Sprintf("Content %d", i),
-			Source:  sourcePtr("test"),
 			Status:  "active",
 		}
 		_ = repo.Create(context.Background(), mem)

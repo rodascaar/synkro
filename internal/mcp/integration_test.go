@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/rodascaar/synkro/internal/db"
+	"github.com/rodascaar/synkro/internal/embeddings"
 	"github.com/rodascaar/synkro/internal/graph"
 	"github.com/rodascaar/synkro/internal/mcp"
 	"github.com/rodascaar/synkro/internal/memory"
@@ -397,6 +398,7 @@ func TestHandlers_ActivateContext_WithDedup(t *testing.T) {
 
 func TestHandlers_ActivateContext_LowSimilarity(t *testing.T) {
 	server, memRepo := setupTestServerWithGraph(t)
+	memRepo.SetEmbeddingGenerator(embeddings.NewTFIDFEmbeddingGenerator(nil))
 	ctx := context.Background()
 
 	mem := &memory.Memory{Type: "note", Title: "Random Note", Content: "Something completely unrelated", Status: "active"}

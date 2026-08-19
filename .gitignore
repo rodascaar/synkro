@@ -1,6 +1,6 @@
 # Binaries
-synkro
-synkro-*
+/synkro
+/synkro-*
 *.test
 test_tui
 

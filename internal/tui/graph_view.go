@@ -156,12 +156,3 @@ func truncateString(s string, maxLen int) string {
 	}
 	return s[:maxLen-3] + "..."
 }
-
-func (gv *GraphView) GetNodeAt(x, y int) *GraphNode {
-	for _, node := range gv.Nodes {
-		if x >= node.X && x <= node.X+20 && y >= node.Y && y <= node.Y+3 {
-			return node
-		}
-	}
-	return nil
-}

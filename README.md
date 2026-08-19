@@ -2,8 +2,8 @@
 
 > Intelligent Context Engine for LLMs
 
-![Version](https://img.shields.io/badge/version-2.0-blue)
-![Go](https://img.shields.io/badge/Go-1.24+-00ADD8E)
+![Version](https://img.shields.io/badge/version-2.1-blue)
+![Go](https://img.shields.io/badge/Go-1.26+-00ADD8E)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 Memory management system with embeddings, relationship graph, and intelligent context pruning.
@@ -61,24 +61,21 @@ make build
 
 - **FTS5 Full-Text Search** with BM25 scoring
 - **Semantic Embeddings** — TF-IDF + N-grams (384 dims) with persistent cache
+- **Hybrid Search** — FTS5 BM25 + in-memory cosine similarity reranking
 - **Relationship Graph** — 6 relation types with BFS pathfinding
 - **Professional TUI** — 3 interactive panels + Add Memory form
 - **MCP Server** — Built with official Go SDK, compatible with all major IDEs
-- **SQLite + WAL** — Fast full-text searches
+- **SQLite + WAL** — Pure-Go driver (`modernc.org/sqlite`), no CGO required
 - **Session Tracking** — Persistent deduplication across sessions
 - **Context Pruning** — Intelligent result filtering
-- **sqlite-vec KNN** — Real vector search (Linux/macOS)
 - **CI/CD** — GitHub Actions with lint, tests, and vulnerability scanning
 
 ## Platform Notes
 
-| Platform | KNN Vectorial | Notes |
-|----------|---------------|-------|
-| Linux | Yes (sqlite-vec) | Requires `libsqlite3-dev` |
-| macOS | Yes (sqlite-vec) | Uses Xcode CLT SQLite |
-| Windows | No | Falls back to in-memory cosine similarity |
-
-On Windows, vector search uses in-memory cosine similarity as a fallback. It is functional but slower with large datasets.
+Synkro uses a pure-Go SQLite driver (`modernc.org/sqlite`) with FTS5 built in, so it
+builds and runs identically on Linux, macOS, and Windows with no native dependencies.
+Vector search uses in-memory cosine similarity over all embeddings, so no external
+vector extension is required.
 
 ### Embedding Models (Optional)
 
@@ -140,22 +137,15 @@ See [INSTALL.md](docs/INSTALL.md) for detailed setup instructions.
 - **Embeddings**: ~50-100ms (cached: ~1-5ms)
 - **Search**: ~10-50ms for 20 results
 - **TUI**: <5ms updates
-- **Binary**: ~8.7MB
+- **Binary**: ~19MB (pure-Go, no native dependencies)
 
 ## Environment Variables
 
 ```bash
-SYNKRO_DB_PATH=memory.db             # Database location (default: memory.db)
-SYNKRO_DEBUG=true                     # Enable debug logging
-SYNKRO_MAX_TOKENS=4000                 # Default context token limit
-SYNKRO_SESSION_BUFFER=20              # Ring buffer size
-SYNKRO_CACHE_SIZE=1000                 # Embedding cache size
-SYNKRO_SIMILARITY_THRESHOLD=0.5       # Minimum similarity for results
-SYNKRO_EMBEDDING_DIM=384              # Embedding dimension
-SYNKRO_MODEL_TYPE=tfidf               # Model type: tfidf or onnx
-SYNKRO_MODEL_DIR=models                # Model download directory
+SYNKRO_DB_PATH=memory.db                 # Database location (default: memory.db)
+SYNKRO_MODEL_TYPE=tfidf                  # Model type: tfidf or onnx
+SYNKRO_MODEL_DIR=models                  # Model download directory
 SYNKRO_PREFERRED_MODEL=all-MiniLM-L6-v2  # Default ONNX model
-SYNKRO_AUTO_UPDATE=true               # Enable auto-update check
 ```
 
 ## License

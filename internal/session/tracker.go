@@ -163,24 +163,3 @@ func (st *SessionTracker) IsDuplicateQuery(sessionID, query string) bool {
 
 	return session.LastQuery == query
 }
-
-func (st *SessionTracker) Persist(ctx context.Context) error {
-	st.mu.Lock()
-	sessions := make([]*Session, 0, len(st.sessions))
-	for _, s := range st.sessions {
-		sessions = append(sessions, s)
-	}
-	st.mu.Unlock()
-
-	if st.repo == nil {
-		return nil
-	}
-
-	for _, session := range sessions {
-		if err := st.repo.Save(ctx, session); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}

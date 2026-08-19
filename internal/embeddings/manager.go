@@ -115,18 +115,6 @@ func (m *EmbeddingManager) IsReady() bool {
 	return m.ready
 }
 
-func (m *EmbeddingManager) Enable() error {
-	if m.enabled {
-		return nil
-	}
-
-	m.mu.Lock()
-	m.enabled = true
-	m.mu.Unlock()
-
-	return nil
-}
-
 func (m *EmbeddingManager) Generate(ctx context.Context, text string) ([]float32, error) {
 	if !m.enabled {
 		return nil, fmt.Errorf("embedding manager not enabled")
@@ -184,18 +172,4 @@ func (m *EmbeddingManager) Dimension() int {
 	default:
 		return EmbeddingDimension
 	}
-}
-
-func (m *EmbeddingManager) Close() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.enabled = false
-
-	if m.onnx != nil {
-		if err := m.onnx.Close(); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }

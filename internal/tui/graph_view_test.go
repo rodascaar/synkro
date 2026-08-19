@@ -82,26 +82,6 @@ func TestGraphView_Render_WithNodes(t *testing.T) {
 	assert.Contains(t, rendered, "Beta")
 }
 
-func TestGraphView_GetNodeAt(t *testing.T) {
-	gv := tui.NewGraphView()
-	mem := &memory.Memory{ID: "a", Type: "note", Title: "Alpha", Status: "active"}
-	gv.AddMemory(mem, 0)
-	gv.CalculateLayout(80, 24)
-	node := gv.Nodes["a"]
-	found := gv.GetNodeAt(node.X, node.Y)
-	assert.NotNil(t, found)
-	assert.Equal(t, "a", found.Memory.ID)
-}
-
-func TestGraphView_GetNodeAt_NotFound(t *testing.T) {
-	gv := tui.NewGraphView()
-	mem := &memory.Memory{ID: "a", Type: "note", Title: "Alpha", Status: "active"}
-	gv.AddMemory(mem, 0)
-	gv.CalculateLayout(80, 24)
-	found := gv.GetNodeAt(999, 999)
-	assert.Nil(t, found)
-}
-
 func TestGraphView_TruncateStringViaRender(t *testing.T) {
 	gv := tui.NewGraphView()
 	gv.AddMemory(&memory.Memory{ID: "a", Type: "note", Title: "This is a very long title that should be truncated", Status: "active"}, 0)

@@ -3,11 +3,8 @@ package embeddings
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
-	"path/filepath"
 	"runtime"
 	"sync"
 
@@ -282,28 +279,6 @@ func (g *ONNXEmbeddingGenerator) Dimension() int {
 	return g.dimension
 }
 
-func (g *ONNXEmbeddingGenerator) SwitchModel(ctx context.Context, modelName string) error {
-	if err := g.modelManager.ValidateModel(modelName); err != nil {
-		return fmt.Errorf("model validation failed: %w", err)
-	}
-
-	if !g.modelManager.models[modelName].Downloaded {
-		if err := g.modelManager.DownloadModel(ctx, modelName, nil); err != nil {
-			return fmt.Errorf("failed to download model: %w", err)
-		}
-	}
-
-	g.modelManager.config.PreferredModel = modelName
-
-	return g.loadModel(ctx)
-}
-
-func (g *ONNXEmbeddingGenerator) GetModelInfo() *ModelInfo {
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-	return g.modelInfo
-}
-
 func (g *ONNXEmbeddingGenerator) Close() error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -311,54 +286,6 @@ func (g *ONNXEmbeddingGenerator) Close() error {
 	if g.session != nil {
 		_ = g.session.Destroy()
 		g.session = nil
-	}
-
-	return nil
-}
-
-func (g *ONNXEmbeddingGenerator) ModelType() string {
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-	if g.modelInfo != nil {
-		return "onnx:" + g.modelInfo.Name
-	}
-	return "onnx"
-}
-
-func DownloadVocabularyFromHuggingFace(modelName, downloadDir string) error {
-	modelDir := filepath.Join(downloadDir, modelName)
-	if err := os.MkdirAll(modelDir, 0755); err != nil {
-		return fmt.Errorf("failed to create model directory: %w", err)
-	}
-
-	vocabURL := fmt.Sprintf("https://huggingface.co/sentence-transformers/%s/resolve/main/vocab.txt", modelName)
-	vocabPath := filepath.Join(modelDir, "vocab.txt")
-
-	ctx := context.Background()
-	req, err := http.NewRequestWithContext(ctx, "GET", vocabURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to download vocabulary: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download vocabulary: HTTP %d", resp.StatusCode)
-	}
-
-	out, err := os.Create(vocabPath)
-	if err != nil {
-		return fmt.Errorf("failed to create vocab file: %w", err)
-	}
-	defer func() { _ = out.Close() }()
-
-	if _, err := io.Copy(out, resp.Body); err != nil {
-		_ = os.Remove(vocabPath)
-		return fmt.Errorf("failed to write vocab file: %w", err)
 	}
 
 	return nil

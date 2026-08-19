@@ -67,13 +67,6 @@ func (g *Graph) GetRelations(ctx context.Context, memoryID string) ([]*memory.Me
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
-	if g.graphRepo != nil {
-		dbRelations, err := g.graphRepo.Get(ctx, memoryID)
-		if err == nil {
-			return dbRelations, nil
-		}
-	}
-
 	var relations []*memory.MemoryRelation
 	relations = append(relations, g.outgoing[memoryID]...)
 	relations = append(relations, g.incoming[memoryID]...)
@@ -147,24 +140,6 @@ func (g *Graph) FindPath(ctx context.Context, fromID, toID string) ([]string, er
 	}
 
 	return nil, fmt.Errorf("no path found from %s to %s", fromID, toID)
-}
-
-func (g *Graph) GetStats(ctx context.Context) (map[string]int, error) {
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-
-	stats := make(map[string]int)
-
-	for _, rels := range g.outgoing {
-		stats[string(memory.RelationExtends)] += len(rels)
-	}
-	for _, rels := range g.incoming {
-		for _, rel := range rels {
-			stats[string(rel.Type)]++
-		}
-	}
-
-	return stats, nil
 }
 
 func (g *Graph) DeleteRelation(ctx context.Context, sourceID, targetID string) error {

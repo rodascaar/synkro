@@ -5,6 +5,31 @@ All notable changes to Synkro will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Migrated SQLite driver from `mattn/go-sqlite3` (CGO) to pure-Go `modernc.org/sqlite`
+- Removed `sqlite-vec` KNN extension; vector search is now in-memory cosine similarity over all embeddings
+- Unified search pipeline: FTS5 BM25 + cosine rerank (no separate hybrid/vector paths)
+- Fixed degenerate TF-IDF embedding hashing (cosine similarity now meaningful)
+- Bumped Go toolchain to 1.26.7 and `golang.org/x/text` to v0.39.0 (security)
+
+### Removed
+
+- `sqlite-vec` extension files and vector build constraints
+- Auto-update check on every CLI command
+- Unused config fields (`Debug`, `MaxTokens`, `SessionBuffer`, `CacheSize`, `SimilarityThreshold`, `EmbeddingDim`, `AutoUpdateCheck`)
+- Dead code across graph, pruner, tui, embeddings, and error packages
+- `memory_tags` junction table (tags stored inline)
+- Duplicate/obsolete docs (`ANALISIS_MD_PRODUCCION.md`, `MCP_SERVER_DOCUMENTATION.md`, root `INSTALL.md`/`EMBEDDINGS.md`/`TUI.md`/`QUICKSTART.md`)
+
+### Added
+
+- Shared `internal/stopwords` package
+- `GetMany` batch lookup on memory repository (fixes TUI N+1)
+- Consolidated CI workflow (`.github/workflows/ci.yml`)
+
 ## [2.1.0] - 2026-04-15
 
 ### Security

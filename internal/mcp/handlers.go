@@ -12,70 +12,27 @@ import (
 	"github.com/rodascaar/synkro/internal/memory"
 )
 
-type AddMemoryInput struct {
-	Type    string   `json:"type"`
-	Title   string   `json:"title"`
-	Content string   `json:"content"`
-	Source  string   `json:"source"`
-	Tags    []string `json:"tags"`
-}
+type AddMemoryInput = AddMemoryArgs
 
-type GetMemoryInput struct {
-	ID string `json:"id"`
-}
+type GetMemoryInput = GetMemoryArgs
 
-type ListMemoryInput struct {
-	Type   string `json:"type"`
-	Status string `json:"status"`
-	Limit  int    `json:"limit"`
-}
+type ListMemoryInput = ListMemoryArgs
 
-type SearchMemoryInput struct {
-	Query  string `json:"query"`
-	Type   string `json:"type"`
-	Status string `json:"status"`
-	Limit  int    `json:"limit"`
-}
+type SearchMemoryInput = SearchMemoryArgs
 
-type UpdateMemoryInput struct {
-	ID      string   `json:"id"`
-	Title   string   `json:"title"`
-	Content string   `json:"content"`
-	Status  string   `json:"status"`
-	Tags    []string `json:"tags"`
-}
+type UpdateMemoryInput = UpdateMemoryArgs
 
-type ArchiveMemoryInput struct {
-	ID string `json:"id"`
-}
+type ArchiveMemoryInput = ArchiveMemoryArgs
 
-type ActivateContextInput struct {
-	Query     string `json:"query"`
-	SessionID string `json:"session_id"`
-	MaxTokens int    `json:"max_tokens"`
-	Limit     int    `json:"limit"`
-}
+type ActivateContextInput = ActivateContextArgs
 
-type AddRelationInput struct {
-	SourceID string  `json:"source_id"`
-	TargetID string  `json:"target_id"`
-	Type     string  `json:"type"`
-	Strength float64 `json:"strength"`
-}
+type AddRelationInput = AddRelationArgs
 
-type GetRelationsInput struct {
-	MemoryID string `json:"memory_id"`
-}
+type GetRelationsInput = GetRelationsArgs
 
-type DeleteRelationInput struct {
-	SourceID string `json:"source_id"`
-	TargetID string `json:"target_id"`
-}
+type DeleteRelationInput = DeleteRelationArgs
 
-type FindPathInput struct {
-	FromID string `json:"from_id"`
-	ToID   string `json:"to_id"`
-}
+type FindPathInput = FindPathArgs
 
 func (s *Server) AddMemory(ctx context.Context, input AddMemoryInput) ([]byte, error) {
 	var buf bytes.Buffer
@@ -142,7 +99,7 @@ func (s *Server) GetMemory(ctx context.Context, input GetMemoryInput, w io.Write
 
 	mem, err := s.repo.Get(ctx, input.ID)
 	if err != nil {
-		return synkroerrors.Wrap(err, "DB_ERROR", "Error getting memory", "Check the memory ID and try again")
+		return synkroerrors.Wrap(err, synkroerrors.CodeDBError, "Error getting memory", "Check the memory ID and try again")
 	}
 	if mem == nil {
 		return synkroerrors.ErrMemoryNotFound
@@ -191,7 +148,7 @@ func (s *Server) ListMemory(ctx context.Context, input ListMemoryInput, w io.Wri
 
 	memories, err := s.repo.Search(ctx, "", filter)
 	if err != nil {
-		return synkroerrors.Wrap(err, "DB_ERROR", "Error listing memories", "Check your database and filters")
+		return synkroerrors.Wrap(err, synkroerrors.CodeDBError, "Error listing memories", "Check your database and filters")
 	}
 
 	response := map[string]interface{}{
@@ -260,7 +217,7 @@ func (s *Server) UpdateMemory(ctx context.Context, input UpdateMemoryInput, w io
 	}
 
 	if err := s.repo.Update(ctx, input.ID, update); err != nil {
-		return synkroerrors.Wrap(err, "DB_ERROR", "Error updating memory", "Check the memory ID and try again")
+		return synkroerrors.Wrap(err, synkroerrors.CodeDBError, "Error updating memory", "Check the memory ID and try again")
 	}
 
 	response := map[string]interface{}{
@@ -287,7 +244,7 @@ func (s *Server) ArchiveMemory(ctx context.Context, input ArchiveMemoryInput, w 
 	}
 
 	if err := s.repo.Update(ctx, input.ID, update); err != nil {
-		return synkroerrors.Wrap(err, "DB_ERROR", "Error archiving memory", "Check the memory ID and try again")
+		return synkroerrors.Wrap(err, synkroerrors.CodeDBError, "Error archiving memory", "Check the memory ID and try again")
 	}
 
 	response := map[string]interface{}{
@@ -352,7 +309,7 @@ func (s *Server) ActivateContext(ctx context.Context, input ActivateContextInput
 	}
 
 	maxSimilarity := results[0].VectorScore
-	if maxSimilarity < 0.1 {
+	if results[0].MatchType != "fts5" && maxSimilarity < 0.1 {
 		response := map[string]interface{}{
 			"query":                input.Query,
 			"session_id":           input.SessionID,
@@ -415,7 +372,7 @@ func (s *Server) ActivateContext(ctx context.Context, input ActivateContextInput
 	}
 
 	if err := writeJSON(w, response); err != nil {
-		return synkroerrors.Wrap(err, "MARSHAL_ERROR", "Error marshaling response", "Please report this issue")
+		return synkroerrors.Wrap(err, synkroerrors.CodeMarshalError, "Error marshaling response", "Please report this issue")
 	}
 	return nil
 }
@@ -433,7 +390,7 @@ func (s *Server) AddRelation(ctx context.Context, input AddRelationInput, w io.W
 	if s.graph == nil {
 		return synkroerrors.Wrap(
 			fmt.Errorf("graph not available"),
-			"GRAPH_NOT_AVAILABLE",
+			synkroerrors.CodeGraphNotAvailable,
 			"Graph not available",
 			"Ensure the graph module is initialized",
 		)
@@ -464,7 +421,7 @@ func (s *Server) AddRelation(ctx context.Context, input AddRelationInput, w io.W
 	}
 
 	if err := s.graph.AddRelation(ctx, relation); err != nil {
-		return synkroerrors.Wrap(err, "GRAPH_ERROR", "Error adding relation", "Check source_id and target_id exist")
+		return synkroerrors.Wrap(err, synkroerrors.CodeGraphError, "Error adding relation", "Check source_id and target_id exist")
 	}
 
 	response := map[string]interface{}{
@@ -491,7 +448,7 @@ func (s *Server) GetRelations(ctx context.Context, input GetRelationsInput, w io
 	if s.graph == nil {
 		return synkroerrors.Wrap(
 			fmt.Errorf("graph not available"),
-			"GRAPH_NOT_AVAILABLE",
+			synkroerrors.CodeGraphNotAvailable,
 			"Graph not available",
 			"Ensure the graph module is initialized",
 		)
@@ -499,7 +456,7 @@ func (s *Server) GetRelations(ctx context.Context, input GetRelationsInput, w io
 
 	relations, err := s.graph.GetRelations(ctx, input.MemoryID)
 	if err != nil {
-		return synkroerrors.Wrap(err, "GRAPH_ERROR", "Error getting relations", "Check the memory_id and try again")
+		return synkroerrors.Wrap(err, synkroerrors.CodeGraphError, "Error getting relations", "Check the memory_id and try again")
 	}
 
 	response := map[string]interface{}{
@@ -524,7 +481,7 @@ func (s *Server) DeleteRelation(ctx context.Context, input DeleteRelationInput, 
 	if s.graph == nil {
 		return synkroerrors.Wrap(
 			fmt.Errorf("graph not available"),
-			"GRAPH_NOT_AVAILABLE",
+			synkroerrors.CodeGraphNotAvailable,
 			"Graph not available",
 			"Ensure the graph module is initialized",
 		)
@@ -556,7 +513,7 @@ func (s *Server) FindPath(ctx context.Context, input FindPathInput, w io.Writer)
 	if s.graph == nil {
 		return synkroerrors.Wrap(
 			fmt.Errorf("graph not available"),
-			"GRAPH_NOT_AVAILABLE",
+			synkroerrors.CodeGraphNotAvailable,
 			"Graph not available",
 			"Ensure the graph module is initialized",
 		)

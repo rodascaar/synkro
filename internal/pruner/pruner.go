@@ -1,34 +1,21 @@
 package pruner
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/rodascaar/synkro/internal/memory"
+	"github.com/rodascaar/synkro/internal/stopwords"
 )
 
 type ContextPruner struct {
-	similarityThreshold float64
-	maxTokens           int
-	stopWords           map[string]bool
+	maxTokens int
+	stopWords map[string]bool
 }
 
 func NewContextPruner() *ContextPruner {
-	stopWords := make(map[string]bool)
-	for _, word := range []string{
-		"el", "la", "de", "que", "y", "a", "en", "un", "por",
-		"con", "no", "una", "su", "para", "es", "del", "los",
-		"the", "a", "an", "and", "are", "as", "at", "be", "by",
-		"for", "from", "has", "he", "in", "is", "it", "its", "of",
-		"on", "that", "the", "to", "was", "were", "will", "with",
-	} {
-		stopWords[strings.ToLower(word)] = true
-	}
-
 	return &ContextPruner{
-		similarityThreshold: 0.5,
-		maxTokens:           4000,
-		stopWords:           stopWords,
+		maxTokens: 4000,
+		stopWords: stopwords.NewSet(),
 	}
 }
 
@@ -60,10 +47,6 @@ func (p *ContextPruner) Prune(results []*memory.HybridSearchResult, query string
 	}
 
 	return pruned
-}
-
-func (p *ContextPruner) WithGrounding(mem *memory.Memory) string {
-	return fmt.Sprintf("[PALACIO MENTAL: %s - %s]\n%s", mem.ID, mem.Title, mem.Content)
 }
 
 func (p *ContextPruner) isLowContent(content, query string) bool {

@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"time"
 )
@@ -373,51 +372,6 @@ func (mm *ModelManager) AutoDownloadPreferredModel(ctx context.Context) error {
 	return mm.DownloadModel(ctx, modelName, nil)
 }
 
-func (mm *ModelManager) GetTotalDiskUsage() (int64, error) {
-	var total int64
-
-	for _, model := range mm.models {
-		if model.Downloaded && model.FileSize > 0 {
-			total += model.FileSize
-		}
-	}
-
-	return total, nil
-}
-
-func (mm *ModelManager) CleanupOldModels(ctx context.Context, keepCount int) error {
-	if keepCount <= 0 {
-		keepCount = mm.config.MaxModels
-	}
-
-	type modelInfo struct {
-		name       string
-		downloaded bool
-	}
-
-	var downloadedModels []modelInfo
-	for name, model := range mm.models {
-		if model.Downloaded {
-			downloadedModels = append(downloadedModels, modelInfo{
-				name:       name,
-				downloaded: true,
-			})
-		}
-	}
-
-	if len(downloadedModels) <= keepCount {
-		return nil
-	}
-
-	for i := 0; i < len(downloadedModels)-keepCount; i++ {
-		if err := mm.DeleteModel(downloadedModels[i].name); err != nil {
-			return fmt.Errorf("failed to delete model %s: %w", downloadedModels[i].name, err)
-		}
-	}
-
-	return nil
-}
-
 func (mm *ModelManager) ValidateModel(name string) error {
 	model, err := mm.GetModel(name)
 	if err != nil {
@@ -472,24 +426,4 @@ func (mm *ModelManager) GetVocabularyPath(name string) (string, error) {
 	}
 
 	return vocabPath, nil
-}
-
-func (mm *ModelManager) GetSystemInfo() map[string]interface{} {
-	totalSize, _ := mm.GetTotalDiskUsage()
-	downloadedCount := 0
-	for _, model := range mm.models {
-		if model.Downloaded {
-			downloadedCount++
-		}
-	}
-
-	return map[string]interface{}{
-		"os":            runtime.GOOS,
-		"arch":          runtime.GOARCH,
-		"download_dir":  mm.downloadDir,
-		"total_models":  len(mm.models),
-		"downloaded":    downloadedCount,
-		"total_size":    totalSize,
-		"auto_download": mm.config.AutoDownload,
-	}
 }

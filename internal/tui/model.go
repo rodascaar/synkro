@@ -497,10 +497,11 @@ func (m *model) renderGraphView() string {
 		node := m.graphView.AddMemory(mem, level)
 
 		relations, err := m.graph.GetRelations(m.ctx, mem.ID)
-		if err == nil {
+		if err == nil && len(relations) > 0 {
+			targetByID := m.targetMemories(relations)
 			for _, rel := range relations {
-				targetMem, err := m.repo.Get(m.ctx, rel.TargetID)
-				if err != nil {
+				targetMem, ok := targetByID[rel.TargetID]
+				if !ok {
 					continue
 				}
 				targetNode := m.graphView.AddMemory(targetMem, level+1)
@@ -550,9 +551,10 @@ func (m *model) renderDetail() string {
 		content.WriteString("RELATIONS\n\n")
 		relations, err := m.graph.GetRelations(m.ctx, mem.ID)
 		if err == nil && len(relations) > 0 {
+			targetByID := m.targetMemories(relations)
 			for _, rel := range relations {
-				targetMem, err := m.repo.Get(m.ctx, rel.TargetID)
-				if err != nil {
+				targetMem, ok := targetByID[rel.TargetID]
+				if !ok {
 					continue
 				}
 
@@ -592,6 +594,26 @@ func (m *model) renderDetail() string {
 	}
 
 	return content.String()
+}
+
+// targetMemories carga en batch las memorias destino de las relaciones,
+// evitando una query por relación (N+1).
+func (m *model) targetMemories(relations []*memory.MemoryRelation) map[string]*memory.Memory {
+	ids := make([]string, 0, len(relations))
+	for _, rel := range relations {
+		ids = append(ids, rel.TargetID)
+	}
+
+	targets, err := m.repo.GetMany(m.ctx, ids)
+	if err != nil {
+		return map[string]*memory.Memory{}
+	}
+
+	byID := make(map[string]*memory.Memory, len(targets))
+	for _, t := range targets {
+		byID[t.ID] = t
+	}
+	return byID
 }
 
 func (m *model) renderFooter() string {

@@ -5,14 +5,14 @@ import (
 	"database/sql"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func setupCacheDB(t *testing.T) (*sql.DB, func()) {
 	t.Helper()
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open("sqlite", "file::memory:?_pragma=foreign_keys(1)")
 	require.NoError(t, err)
 
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS embedding_cache (
@@ -103,22 +103,6 @@ func TestCache_LRUMoveToFront(t *testing.T) {
 	assert.Equal(t, []float32{1}, got)
 }
 
-func TestCache_Clear(t *testing.T) {
-	sqlDB, cleanup := setupCacheDB(t)
-	defer cleanup()
-
-	cache := NewCache(sqlDB, 10)
-	ctx := context.Background()
-
-	require.NoError(t, cache.Set(ctx, "test", []float32{1}, "tfidf"))
-
-	err := cache.Clear(ctx)
-	require.NoError(t, err)
-
-	_, ok := cache.Get(ctx, "test")
-	assert.False(t, ok)
-}
-
 func TestCache_Persistence(t *testing.T) {
 	sqlDB, cleanup := setupCacheDB(t)
 	defer cleanup()
@@ -181,20 +165,4 @@ func TestCache_UpdateExisting(t *testing.T) {
 	got, ok := cache.Get(ctx, "update")
 	assert.True(t, ok)
 	assert.Equal(t, []float32{2}, got)
-}
-
-func TestCache_Prune(t *testing.T) {
-	sqlDB, cleanup := setupCacheDB(t)
-	defer cleanup()
-
-	cache := NewCache(sqlDB, 10)
-	ctx := context.Background()
-
-	require.NoError(t, cache.Set(ctx, "old", []float32{1}, "tfidf"))
-
-	err := cache.Prune(ctx)
-	require.NoError(t, err)
-
-	_, ok := cache.Get(ctx, "old")
-	assert.False(t, ok, "old entry should be pruned")
 }

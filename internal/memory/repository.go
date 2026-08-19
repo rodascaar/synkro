@@ -4,15 +4,24 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"time"
 
-	"log"
-
 	"github.com/google/uuid"
 	"github.com/rodascaar/synkro/internal/db"
 	"github.com/rodascaar/synkro/internal/embeddings"
+)
+
+const (
+	defaultLimit = 50
+	// searchFetchMultiplier amplía la ventana de candidatos previo al corte final.
+	searchFetchMultiplier = 3
+
+	weightFTS5Only   = 0.6 // Match solo FTS5 (sin embedding).
+	weightVectorOnly = 0.8 // Match solo vectorial (sin FTS5).
+	weightBoth       = 0.5 // Peso de cada componente cuando hay match híbrido.
 )
 
 type Repository struct {
@@ -58,18 +67,6 @@ func (r *Repository) Create(ctx context.Context, mem *Memory) error {
 		return err
 	}
 
-	if len(mem.Tags) > 0 {
-		for _, tag := range mem.Tags {
-			if tag == "" {
-				continue
-			}
-			_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO memory_tags (memory_id, tag) VALUES (?, ?)`, id, tag)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
 	mem.ID = id
 
 	if err := tx.Commit(); err != nil {
@@ -91,394 +88,143 @@ func (r *Repository) Create(ctx context.Context, mem *Memory) error {
 }
 
 func (r *Repository) saveEmbedding(ctx context.Context, exec db.Executor, memoryID string, embedding []float32) error {
-	if err := db.InsertVector(ctx, exec, memoryID, embedding); err != nil {
-		return err
-	}
 	_, err := exec.ExecContext(ctx, `
 		INSERT INTO memory_embeddings (memory_id, embedding, created_at)
 		VALUES (?, ?, ?)
-		ON CONFLICT DO NOTHING
+		ON CONFLICT(memory_id) DO UPDATE SET embedding = excluded.embedding, created_at = excluded.created_at
 	`, memoryID, embeddings.SerializeEmbedding(embedding), time.Now().UTC().Format(time.RFC3339))
 	return err
 }
 
-func (r *Repository) loadTags(ctx context.Context, memoryID string) ([]string, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT tag FROM memory_tags WHERE memory_id = ? ORDER BY tag`, memoryID)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-
-	var tags []string
-	for rows.Next() {
-		var tag string
-		if err := rows.Scan(&tag); err != nil {
-			continue
-		}
-		tags = append(tags, tag)
-	}
-	return tags, nil
-}
-
 func (r *Repository) Get(ctx context.Context, id string) (*Memory, error) {
-	mem := &Memory{}
-	var tagsStr string
-	var createdAtStr, updatedAtStr string
-
-	var source sql.NullString
-
-	err := r.db.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, created_at, updated_at, type, title, content, COALESCE(source, ''), status, COALESCE(tags, '')
 		FROM memories WHERE id = ?
-	`, id).Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr)
-
+	`, id)
+	mem, err := scanMemory(row)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-
-	mem.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
-	mem.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
-	mem.Source = scanSource(source)
-
-	tags, err := r.loadTags(ctx, mem.ID)
-	if err == nil && len(tags) > 0 {
-		mem.Tags = tags
-	} else if tagsStr != "" {
-		mem.Tags = strings.Split(tagsStr, "|")
-	}
-
 	return mem, nil
 }
 
-func (r *Repository) Search(ctx context.Context, query string, filter MemoryFilter) ([]*Memory, error) {
-	if r.embeddingGenerator != nil && query != "" {
-		queryEmbedding, err := r.embeddingGenerator.Generate(ctx, query)
-		if err == nil {
-			return r.vectorialSearch(ctx, queryEmbedding, filter)
-		}
+// GetMany devuelve las memorias cuyos IDs están en ids, preservando el orden
+// de entrada. Los IDs inexistentes se omiten.
+func (r *Repository) GetMany(ctx context.Context, ids []string) ([]*Memory, error) {
+	if len(ids) == 0 {
+		return []*Memory{}, nil
 	}
 
-	where := "WHERE 1=1"
-	args := []interface{}{}
-
-	if filter.Type != "" {
-		where += " AND m.type = ?"
-		args = append(args, filter.Type)
-	}
-	if filter.Status != "" {
-		where += " AND m.status = ?"
-		args = append(args, filter.Status)
-	}
-
-	sqlQuery := fmt.Sprintf("SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, '') FROM memories m %s ORDER BY m.created_at DESC", where)
-	if filter.Limit > 0 {
-		sqlQuery += " LIMIT ?"
-		args = append(args, filter.Limit)
-	} else {
-		sqlQuery += " LIMIT 50"
-		args = append(args, 50)
-	}
-
-	rows, err := r.db.QueryContext(ctx, sqlQuery, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-
-	var memories []*Memory
-	for rows.Next() {
-		mem := &Memory{}
-		var tagsStr string
-		var createdAtStr, updatedAtStr string
-
-		var source sql.NullString
-
-		if err := rows.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr); err != nil {
-			return nil, err
-		}
-
-		mem.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
-		mem.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
-		mem.Source = scanSource(source)
-		if tagsStr != "" {
-			mem.Tags = strings.Split(tagsStr, "|")
-		}
-		memories = append(memories, mem)
-	}
-
-	return memories, nil
-}
-
-func (r *Repository) vectorialSearch(ctx context.Context, queryEmbedding []float32, filter MemoryFilter) ([]*Memory, error) {
-	limit := filter.Limit
-	if limit <= 0 {
-		limit = 50
-	}
-
-	vecResults, err := db.SearchVectors(ctx, r.db, queryEmbedding, limit)
-	if err == nil && len(vecResults) > 0 {
-		return r.loadMemoriesByIDs(ctx, vecResults, filter, limit)
-	}
-
-	return r.fallbackVectorialSearch(ctx, queryEmbedding, filter, limit)
-}
-
-func (r *Repository) loadMemoriesByIDs(ctx context.Context, vecResults []*db.VectorSearchResult, filter MemoryFilter, limit int) ([]*Memory, error) {
-	ids := make([]string, 0, len(vecResults))
-	for _, vr := range vecResults {
-		ids = append(ids, vr.MemoryID)
-	}
-
-	placeholders := strings.Repeat("?,", len(ids))
-	placeholders = placeholders[:len(placeholders)-1]
-
-	where := fmt.Sprintf("WHERE m.id IN (%s)", placeholders)
-	args := make([]interface{}, 0, len(ids)+2)
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	seen := make(map[string]bool)
+	j := 0
 	for _, id := range ids {
-		args = append(args, id)
-	}
-
-	if filter.Type != "" {
-		where += " AND m.type = ?"
-		args = append(args, filter.Type)
-	}
-	if filter.Status != "" {
-		where += " AND m.status = ?"
-		args = append(args, filter.Status)
-	}
-
-	sqlQuery := fmt.Sprintf(`
-		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status
-		FROM memories m
-		%s
-		LIMIT ?
-	`, where)
-	args = append(args, limit)
-
-	rows, err := r.db.QueryContext(ctx, sqlQuery, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-
-	idOrder := make(map[string]int)
-	for i, vr := range vecResults {
-		idOrder[vr.MemoryID] = i
-	}
-
-	var memories []*Memory
-	for rows.Next() {
-		mem := &Memory{}
-		var createdAtStr, updatedAtStr string
-
-		var source sql.NullString
-
-		if err := rows.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status); err != nil {
-			return nil, err
-		}
-
-		mem.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
-		mem.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
-		mem.Source = scanSource(source)
-		mem.Tags, _ = r.loadTags(ctx, mem.ID)
-		memories = append(memories, mem)
-	}
-
-	sort.Slice(memories, func(i, j int) bool {
-		return idOrder[memories[i].ID] < idOrder[memories[j].ID]
-	})
-
-	return memories, nil
-}
-
-func (r *Repository) fallbackVectorialSearch(ctx context.Context, queryEmbedding []float32, filter MemoryFilter, limit int) ([]*Memory, error) {
-	where := "WHERE 1=1"
-	args := []interface{}{}
-
-	if filter.Type != "" {
-		where += " AND m.type = ?"
-		args = append(args, filter.Type)
-	}
-	if filter.Status != "" {
-		where += " AND m.status = ?"
-		args = append(args, filter.Status)
-	}
-
-	sqlQuery := fmt.Sprintf(`
-		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, '')
-		FROM memories m
-		LEFT JOIN memory_embeddings e ON m.id = e.memory_id
-		%s
-		ORDER BY m.created_at DESC
-		LIMIT ?
-	`, where)
-	args = append(args, limit)
-
-	rows, err := r.db.QueryContext(ctx, sqlQuery, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-
-	type resultWithEmbedding struct {
-		Memory    *Memory
-		Embedding []float32
-	}
-
-	var results []resultWithEmbedding
-	for rows.Next() {
-		mem := &Memory{}
-		var tagsStr string
-		var createdAtStr, updatedAtStr string
-		var embeddingBytes []byte
-
-		var source sql.NullString
-
-		if err := rows.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr, &embeddingBytes); err != nil {
+		if id == "" || seen[id] {
 			continue
 		}
-
-		mem.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
-		mem.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
-		mem.Source = scanSource(source)
-		if tagsStr != "" {
-			mem.Tags = strings.Split(tagsStr, "|")
-		}
-
-		var embedding []float32
-		if embeddingBytes != nil {
-			embedding = embeddings.DeserializeEmbedding(embeddingBytes)
-		}
-
-		results = append(results, resultWithEmbedding{
-			Memory:    mem,
-			Embedding: embedding,
-		})
+		seen[id] = true
+		placeholders[j] = "?"
+		args[j] = id
+		j++
+	}
+	if j == 0 {
+		return []*Memory{}, nil
 	}
 
-	type scoredResult struct {
-		Memory     *Memory
-		Similarity float64
+	query := `
+		SELECT id, created_at, updated_at, type, title, content, COALESCE(source, ''), status, COALESCE(tags, '')
+		FROM memories WHERE id IN (` + strings.Join(placeholders[:j], ",") + `)`
+
+	rows, err := r.db.QueryContext(ctx, query, args[:j]...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	byID := make(map[string]*Memory, j)
+	for rows.Next() {
+		mem, err := scanMemory(rows)
+		if err != nil {
+			return nil, err
+		}
+		byID[mem.ID] = mem
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
-	var scored []scoredResult
-	for _, result := range results {
-		if result.Embedding != nil {
-			similarity := float64(embeddings.CosineSimilarity(queryEmbedding, result.Embedding))
-			scored = append(scored, scoredResult{
-				Memory:     result.Memory,
-				Similarity: similarity,
-			})
+	memories := make([]*Memory, 0, len(ids))
+	added := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if added[id] {
+			continue
+		}
+		if mem, ok := byID[id]; ok {
+			added[id] = true
+			memories = append(memories, mem)
 		}
 	}
-
-	sort.Slice(scored, func(i, j int) bool {
-		return scored[i].Similarity > scored[j].Similarity
-	})
-
-	var memories []*Memory
-	for i, result := range scored {
-		if i >= limit {
-			break
-		}
-		memories = append(memories, result.Memory)
-	}
-
 	return memories, nil
 }
 
+// Search devuelve memorias según query. Con query vacío lista las más recientes;
+// con query no vacío usa el pipeline unificado FTS5 BM25 + re-rank vectorial.
+func (r *Repository) Search(ctx context.Context, query string, filter MemoryFilter) ([]*Memory, error) {
+	if query == "" {
+		return r.list(ctx, filter)
+	}
+
+	results, err := r.searchRanked(ctx, query, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	memories := make([]*Memory, 0, len(results))
+	for _, res := range results {
+		memories = append(memories, res.Memory)
+	}
+	return memories, nil
+}
+
+// HybridSearch es el mismo pipeline unificado que Search pero con scores por resultado.
 func (r *Repository) HybridSearch(ctx context.Context, query string, k int, filter HybridSearchFilter) ([]*HybridSearchResult, error) {
-	if r.embeddingGenerator == nil {
-		return nil, fmt.Errorf("embedding generator not configured")
+	if query == "" {
+		return nil, fmt.Errorf("query cannot be empty")
 	}
-
-	queryEmbedding, err := r.embeddingGenerator.Generate(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate query embedding: %w", err)
-	}
-
-	fts5Results, fts5Err := r.searchWithBM25(ctx, query, filter)
-
-	vectorResults, err := r.searchByVector(ctx, queryEmbedding, filter, k*3)
-	if err != nil {
-		return nil, fmt.Errorf("vector search failed: %w", err)
-	}
-
-	var combinedResults []*HybridSearchResult
-	if fts5Err == nil && len(fts5Results) > 0 {
-		combinedResults = r.mergeSearchResults(ctx, fts5Results, vectorResults, queryEmbedding, k)
-	} else {
-		combinedResults = r.vectorOnlyResults(vectorResults, k)
-	}
-
-	return combinedResults, nil
+	return r.searchRanked(ctx, query, filter)
 }
 
-func (r *Repository) vectorOnlyResults(vectorResults map[string]*VectorResult, k int) []*HybridSearchResult {
-	results := make([]*HybridSearchResult, 0, len(vectorResults))
-
-	if len(vectorResults) == 0 {
-		return results
+func (r *Repository) searchRanked(ctx context.Context, query string, filter HybridSearchFilter) ([]*HybridSearchResult, error) {
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = defaultLimit
 	}
 
-	first := true
-	var maxScore, minScore float64
-	for _, vector := range vectorResults {
-		if first || vector.Score > maxScore {
-			maxScore = vector.Score
+	fts5Results, fts5Err := r.searchWithBM25(ctx, query, filter, limit*searchFetchMultiplier)
+
+	var vectorResults map[string]*VectorResult
+	if r.embeddingGenerator != nil {
+		if queryEmbedding, err := r.embeddingGenerator.Generate(ctx, query); err == nil {
+			vectorResults, _ = r.scoreByVector(ctx, queryEmbedding, filter, limit*searchFetchMultiplier)
 		}
-		if first || vector.Score < minScore {
-			minScore = vector.Score
-		}
-		first = false
 	}
 
-	normalize := func(score float64) float64 {
-		if maxScore == minScore {
-			return 1.0
-		}
-		return (score - minScore) / (maxScore - minScore)
+	if fts5Err != nil {
+		log.Printf("warning: FTS5 search failed, using vector-only results: %v", fts5Err)
 	}
 
-	for _, vector := range vectorResults {
-		normalizedScore := normalize(vector.Score)
-		results = append(results, &HybridSearchResult{
-			Memory:        vector.Memory,
-			VectorScore:   normalizedScore,
-			FTS5Score:     0.0,
-			CombinedScore: normalizedScore,
-			MatchType:     "vector",
-		})
+	if len(fts5Results) == 0 || fts5Err != nil {
+		return vectorOnlyResults(vectorResults, limit), nil
 	}
-
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].CombinedScore > results[j].CombinedScore
-	})
-
-	if len(results) > k {
-		results = results[:k]
-	}
-
-	return results
+	return mergeSearchResults(fts5Results, vectorResults, limit), nil
 }
 
-func (r *Repository) searchWithBM25(ctx context.Context, query string, filter HybridSearchFilter) (map[string]*FTS5Result, error) {
-	where := "WHERE 1=1"
-	args := []interface{}{}
-
-	if filter.Type != "" {
-		where += " AND m.type = ?"
-		args = append(args, filter.Type)
-	}
-	if filter.Status != "" {
-		where += " AND m.status = ?"
-		args = append(args, filter.Status)
-	}
-
-	safeQuery := sanitizeFTS5Query(query)
+func (r *Repository) searchWithBM25(ctx context.Context, query string, filter HybridSearchFilter, limit int) (map[string]*FTS5Result, error) {
+	where, args := buildFilterWhere(filter)
 
 	sqlQuery := fmt.Sprintf(`
 		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, ''), rank
@@ -486,9 +232,9 @@ func (r *Repository) searchWithBM25(ctx context.Context, query string, filter Hy
 		INNER JOIN memories_fts f ON m.id = f.id
 		%s AND memories_fts MATCH ?
 		ORDER BY rank
-		LIMIT 50
+		LIMIT ?
 	`, where)
-	args = append(args, safeQuery)
+	args = append(args, sanitizeFTS5Query(query), limit)
 
 	rows, err := r.db.QueryContext(ctx, sqlQuery, args...)
 	if err != nil {
@@ -498,51 +244,28 @@ func (r *Repository) searchWithBM25(ctx context.Context, query string, filter Hy
 
 	results := make(map[string]*FTS5Result)
 	for rows.Next() {
-		mem := &Memory{}
-		var tagsStr string
-		var createdAtStr, updatedAtStr string
-		var bm25Rank float64
-
-		var source sql.NullString
-
-		if err := rows.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr, &bm25Rank); err != nil {
+		mem, bm25Rank, err := scanMemoryWithRank(rows)
+		if err != nil {
 			return nil, err
 		}
-
-		mem.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
-		mem.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
-		mem.Source = scanSource(source)
-		if tagsStr != "" {
-			mem.Tags = strings.Split(tagsStr, "|")
-		}
-
 		results[mem.ID] = &FTS5Result{
 			Memory: mem,
 			Rank:   bm25Rank,
-			Score:  calculateBM25Score(bm25Rank),
+			Score:  bm25ToScore(bm25Rank),
 		}
 	}
-
 	return results, nil
 }
 
-func (r *Repository) searchByVector(ctx context.Context, queryEmbedding []float32, filter HybridSearchFilter, limit int) (map[string]*VectorResult, error) {
-	where := "WHERE 1=1"
-	args := []interface{}{}
-
-	if filter.Type != "" {
-		where += " AND m.type = ?"
-		args = append(args, filter.Type)
-	}
-	if filter.Status != "" {
-		where += " AND m.status = ?"
-		args = append(args, filter.Status)
-	}
+// scoreByVector calcula similitud coseno in-memory contra todos los candidatos
+// que cumplen el filtro y tienen embedding.
+func (r *Repository) scoreByVector(ctx context.Context, queryEmbedding []float32, filter HybridSearchFilter, limit int) (map[string]*VectorResult, error) {
+	where, args := buildFilterWhere(filter)
 
 	sqlQuery := fmt.Sprintf(`
 		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, ''), e.embedding
 		FROM memories m
-		LEFT JOIN memory_embeddings e ON m.id = e.memory_id
+		INNER JOIN memory_embeddings e ON m.id = e.memory_id
 		%s
 		ORDER BY m.created_at DESC
 		LIMIT ?
@@ -557,98 +280,73 @@ func (r *Repository) searchByVector(ctx context.Context, queryEmbedding []float3
 
 	results := make(map[string]*VectorResult)
 	for rows.Next() {
-		mem := &Memory{}
-		var tagsStr string
-		var createdAtStr, updatedAtStr string
-		var embeddingBytes []byte
-
-		var source sql.NullString
-
-		if err := rows.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr, &embeddingBytes); err != nil {
+		mem, embeddingBytes, err := scanMemoryWithEmbedding(rows)
+		if err != nil {
 			continue
 		}
-
-		mem.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
-		mem.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
-		mem.Source = scanSource(source)
-		if tagsStr != "" {
-			mem.Tags = strings.Split(tagsStr, "|")
-		}
-
-		var vectorScore float64
+		score := 0.0
 		if embeddingBytes != nil {
-			memEmbedding := embeddings.DeserializeEmbedding(embeddingBytes)
-			if memEmbedding != nil {
-				vectorScore = float64(embeddings.CosineSimilarity(queryEmbedding, memEmbedding))
+			if memEmbedding := embeddings.DeserializeEmbedding(embeddingBytes); memEmbedding != nil {
+				score = float64(embeddings.CosineSimilarity(queryEmbedding, memEmbedding))
 			}
 		}
-
-		results[mem.ID] = &VectorResult{
-			Memory: mem,
-			Score:  vectorScore,
-		}
+		results[mem.ID] = &VectorResult{Memory: mem, Score: score}
 	}
-
 	return results, nil
 }
 
-func (r *Repository) mergeSearchResults(_ context.Context, fts5Results map[string]*FTS5Result, vectorResults map[string]*VectorResult, _ []float32, k int) []*HybridSearchResult {
-	seen := make(map[string]bool)
-	merged := make([]*HybridSearchResult, 0)
-
-	normalizer := func(score, min, max float64) float64 {
-		if max == min {
-			return 0.5
-		}
-		return (score - min) / (max - min)
+func vectorOnlyResults(vectorResults map[string]*VectorResult, k int) []*HybridSearchResult {
+	if len(vectorResults) == 0 {
+		return []*HybridSearchResult{}
 	}
 
-	var maxFTS5, minFTS5 float64
-	for _, result := range fts5Results {
-		if result.Score > maxFTS5 {
-			maxFTS5 = result.Score
-		}
-		if result.Score < minFTS5 {
-			minFTS5 = result.Score
-		}
+	maxScore, minScore := scoresRange(vectorResults)
+
+	results := make([]*HybridSearchResult, 0, len(vectorResults))
+	for _, vector := range vectorResults {
+		normalized := normalizeScore(vector.Score, minScore, maxScore)
+		results = append(results, &HybridSearchResult{
+			Memory:        vector.Memory,
+			VectorScore:   vector.Score,
+			FTS5Score:     0.0,
+			CombinedScore: normalized,
+			MatchType:     "vector",
+		})
 	}
 
-	var maxVector, minVector float64
-	for _, result := range vectorResults {
-		if result.Score > maxVector {
-			maxVector = result.Score
-		}
-		if result.Score < minVector {
-			minVector = result.Score
-		}
+	sortResults(results)
+	return truncateResults(results, k)
+}
+
+func mergeSearchResults(fts5Results map[string]*FTS5Result, vectorResults map[string]*VectorResult, k int) []*HybridSearchResult {
+	_, maxFTS5, minFTS5 := scoresRangeFTS5(fts5Results)
+	maxVector, minVector := 0.0, 0.0
+	if len(vectorResults) > 0 {
+		maxVector, minVector = scoresRange(vectorResults)
 	}
+
+	seen := make(map[string]bool, len(fts5Results))
+	merged := make([]*HybridSearchResult, 0, len(fts5Results))
 
 	for id, fts5 := range fts5Results {
-		if seen[id] {
-			continue
-		}
 		seen[id] = true
+		normalizedFTS5 := normalizeScore(fts5.Score, minFTS5, maxFTS5)
 
-		normalizedFTS5 := normalizer(fts5.Score, minFTS5, maxFTS5)
-
-		vector, vectorExists := vectorResults[id]
-		normalizedVector := 0.0
-		if vectorExists {
-			normalizedVector = normalizer(vector.Score, minVector, maxVector)
-		}
-
-		combinedScore := normalizedFTS5*0.6 + normalizedVector*0.4
+		vectorScore := 0.0
 		matchType := "fts5"
-		if vectorExists {
+		combined := normalizedFTS5 * weightFTS5Only
+		if vector, ok := vectorResults[id]; ok {
+			vectorScore = vector.Score
+			normalizedVector := normalizeScore(vector.Score, minVector, maxVector)
 			matchType = "both"
-			combinedScore = normalizedFTS5*0.5 + normalizedVector*0.5
+			combined = normalizedFTS5*weightBoth + normalizedVector*weightBoth
 		}
 
 		merged = append(merged, &HybridSearchResult{
 			Memory:        fts5.Memory,
-			VectorScore:   normalizedVector,
+			VectorScore:   vectorScore,
 			FTS5Score:     normalizedFTS5,
-			CombinedScore: combinedScore,
+			CombinedScore: combined,
 			MatchType:     matchType,
 		})
 	}
@@ -658,39 +356,71 @@ func (r *Repository) mergeSearchResults(_ context.Context, fts5Results map[strin
 			continue
 		}
 		seen[id] = true
-
-		normalizedVector := normalizer(vector.Score, minVector, maxVector)
-
+		normalized := normalizeScore(vector.Score, minVector, maxVector)
 		merged = append(merged, &HybridSearchResult{
 			Memory:        vector.Memory,
-			VectorScore:   normalizedVector,
+			VectorScore:   vector.Score,
 			FTS5Score:     0.0,
-			CombinedScore: normalizedVector * 0.8,
+			CombinedScore: normalized * weightVectorOnly,
 			MatchType:     "vector",
 		})
 	}
 
-	sort.Slice(merged, func(i, j int) bool {
-		return merged[i].CombinedScore > merged[j].CombinedScore
-	})
-
-	if len(merged) > k {
-		merged = merged[:k]
-	}
-
-	return merged
+	sortResults(merged)
+	return truncateResults(merged, k)
 }
 
-func calculateBM25Score(rank float64) float64 {
-	if rank == 0 {
-		return 1.0
+func buildFilterWhere(filter HybridSearchFilter) (string, []interface{}) {
+	where := "WHERE 1=1"
+	args := []interface{}{}
+	if filter.Type != "" {
+		where += " AND m.type = ?"
+		args = append(args, filter.Type)
 	}
-	return 1.0 / rank
+	if filter.Status != "" {
+		where += " AND m.status = ?"
+		args = append(args, filter.Status)
+	}
+	return where, args
+}
+
+func (r *Repository) list(ctx context.Context, filter MemoryFilter) ([]*Memory, error) {
+	where, args := buildFilterWhere(HybridSearchFilter{Type: filter.Type, Status: filter.Status})
+
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = defaultLimit
+	}
+
+	sqlQuery := fmt.Sprintf(`
+		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, '')
+		FROM memories m
+		%s
+		ORDER BY m.created_at DESC
+		LIMIT ?
+	`, where)
+	args = append(args, limit)
+
+	rows, err := r.db.QueryContext(ctx, sqlQuery, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	memories := make([]*Memory, 0)
+	for rows.Next() {
+		mem, err := scanMemory(rows)
+		if err != nil {
+			return nil, err
+		}
+		memories = append(memories, mem)
+	}
+	return memories, nil
 }
 
 func (r *Repository) Update(ctx context.Context, id string, update *MemoryUpdate) error {
-	sets := []string{}
-	args := []interface{}{}
+	sets := make([]string, 0, 4)
+	args := make([]interface{}, 0, 4)
 
 	titleChanged := update.Title != nil
 	contentChanged := update.Content != nil
@@ -727,46 +457,22 @@ func (r *Repository) Update(ctx context.Context, id string, update *MemoryUpdate
 		_ = tx.Rollback()
 	}()
 
-	_, err = tx.ExecContext(ctx, fmt.Sprintf("UPDATE memories SET %s WHERE id = ?", strings.Join(sets, ", ")), args...)
-	if err != nil {
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf("UPDATE memories SET %s WHERE id = ?", strings.Join(sets, ", ")), args...); err != nil {
 		return err
 	}
 
-	if update.Tags != nil {
-		_, err = tx.ExecContext(ctx, `DELETE FROM memory_tags WHERE memory_id = ?`, id)
-		if err != nil {
+	if (titleChanged || contentChanged) && r.embeddingGenerator != nil {
+		var title, content string
+		if err := tx.QueryRowContext(ctx, `SELECT title, content FROM memories WHERE id = ?`, id).Scan(&title, &content); err != nil {
 			return err
 		}
-		for _, tag := range update.Tags {
-			if tag == "" {
-				continue
-			}
-			_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO memory_tags (memory_id, tag) VALUES (?, ?)`, id, tag)
-			if err != nil {
+		if embedding, err := r.embeddingGenerator.Generate(ctx, title+" "+content); err == nil {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO memory_embeddings (memory_id, embedding, created_at)
+				VALUES (?, ?, ?)
+				ON CONFLICT(memory_id) DO UPDATE SET embedding = excluded.embedding, created_at = excluded.created_at
+			`, id, embeddings.SerializeEmbedding(embedding), time.Now().UTC().Format(time.RFC3339)); err != nil {
 				return err
-			}
-		}
-	}
-
-	if (titleChanged || contentChanged) && r.embeddingGenerator != nil {
-		current, err := r.Get(ctx, id)
-		if err == nil && current != nil {
-			newTitle := current.Title
-			newContent := current.Content
-			if update.Title != nil {
-				newTitle = *update.Title
-			}
-			if update.Content != nil {
-				newContent = *update.Content
-			}
-
-			embedding, err := r.embeddingGenerator.Generate(ctx, newTitle+" "+newContent)
-			if err == nil {
-				vecData := embeddings.SerializeEmbedding(embedding)
-				_, _ = tx.ExecContext(ctx, `
-					UPDATE memory_embeddings SET embedding = ? WHERE memory_id = ?
-				`, vecData, id)
-				_ = db.UpdateVector(ctx, tx, id, embedding)
 			}
 		}
 	}
@@ -775,8 +481,8 @@ func (r *Repository) Update(ctx context.Context, id string, update *MemoryUpdate
 }
 
 func (r *Repository) GetByTag(ctx context.Context, tag string, filter MemoryFilter) ([]*Memory, error) {
-	where := "WHERE mt.tag = ?"
-	args := []interface{}{tag}
+	where := "WHERE instr('|' || m.tags || '|', ?) > 0"
+	args := []interface{}{"|" + tag + "|"}
 
 	if filter.Type != "" {
 		where += " AND m.type = ?"
@@ -789,13 +495,12 @@ func (r *Repository) GetByTag(ctx context.Context, tag string, filter MemoryFilt
 
 	limit := filter.Limit
 	if limit <= 0 {
-		limit = 50
+		limit = defaultLimit
 	}
 
 	sqlQuery := fmt.Sprintf(`
-		SELECT DISTINCT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, '')
+		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, '')
 		FROM memories m
-		INNER JOIN memory_tags mt ON m.id = mt.memory_id
 		%s
 		ORDER BY m.created_at DESC
 		LIMIT ?
@@ -808,25 +513,14 @@ func (r *Repository) GetByTag(ctx context.Context, tag string, filter MemoryFilt
 	}
 	defer func() { _ = rows.Close() }()
 
-	var memories []*Memory
+	memories := make([]*Memory, 0)
 	for rows.Next() {
-		mem := &Memory{}
-		var tagsStr string
-		var createdAtStr, updatedAtStr string
-
-		var source sql.NullString
-
-		if err := rows.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr); err != nil {
+		mem, err := scanMemory(rows)
+		if err != nil {
 			return nil, err
 		}
-
-		mem.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
-		mem.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
-		mem.Source = scanSource(source)
-		mem.Tags, _ = r.loadTags(ctx, mem.ID)
 		memories = append(memories, mem)
 	}
-
 	return memories, nil
 }
 
@@ -835,15 +529,121 @@ func (r *Repository) Delete(ctx context.Context, id string) error {
 	return err
 }
 
+// --- helpers de scoring ---
+
+// bm25ToScore convierte el rank negativo de FTS5 en un score positivo donde
+// mayor = mejor. FTS5 bm25() devuelve valores negativos (menor = mejor).
+func bm25ToScore(rank float64) float64 {
+	return -rank
+}
+
+func normalizeScore(score, min, max float64) float64 {
+	if max == min {
+		return 1.0
+	}
+	return (score - min) / (max - min)
+}
+
+func scoresRange(results map[string]*VectorResult) (float64, float64) {
+	var max, min float64
+	first := true
+	for _, v := range results {
+		if first || v.Score > max {
+			max = v.Score
+		}
+		if first || v.Score < min {
+			min = v.Score
+		}
+		first = false
+	}
+	return max, min
+}
+
+func scoresRangeFTS5(results map[string]*FTS5Result) (float64, float64, float64) {
+	var max, min float64
+	first := true
+	for _, v := range results {
+		if first || v.Score > max {
+			max = v.Score
+		}
+		if first || v.Score < min {
+			min = v.Score
+		}
+		first = false
+	}
+	return 0.0, max, min
+}
+
+func sortResults(results []*HybridSearchResult) {
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].CombinedScore > results[j].CombinedScore
+	})
+}
+
+func truncateResults(results []*HybridSearchResult, k int) []*HybridSearchResult {
+	if len(results) > k {
+		results = results[:k]
+	}
+	return results
+}
+
+// --- helpers de escaneo ---
+
+type rowScanner interface {
+	Scan(dest ...interface{}) error
+}
+
+func scanMemory(row rowScanner) (*Memory, error) {
+	mem := &Memory{}
+	var tagsStr, createdAtStr, updatedAtStr string
+	var source sql.NullString
+	if err := row.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr); err != nil {
+		return nil, err
+	}
+	return buildMemory(mem, createdAtStr, updatedAtStr, source, tagsStr), nil
+}
+
+func scanMemoryWithRank(row rowScanner) (*Memory, float64, error) {
+	mem := &Memory{}
+	var tagsStr, createdAtStr, updatedAtStr string
+	var source sql.NullString
+	var rank float64
+	if err := row.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr, &rank); err != nil {
+		return nil, 0, err
+	}
+	return buildMemory(mem, createdAtStr, updatedAtStr, source, tagsStr), rank, nil
+}
+
+func scanMemoryWithEmbedding(row rowScanner) (*Memory, []byte, error) {
+	mem := &Memory{}
+	var tagsStr, createdAtStr, updatedAtStr string
+	var source sql.NullString
+	var embedding []byte
+	if err := row.Scan(&mem.ID, &createdAtStr, &updatedAtStr, &mem.Type, &mem.Title, &mem.Content, &source, &mem.Status, &tagsStr, &embedding); err != nil {
+		return nil, nil, err
+	}
+	return buildMemory(mem, createdAtStr, updatedAtStr, source, tagsStr), embedding, nil
+}
+
+func buildMemory(mem *Memory, createdAtStr, updatedAtStr string, source sql.NullString, tagsStr string) *Memory {
+	mem.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
+	mem.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
+	mem.Source = scanSource(source)
+	if tagsStr != "" {
+		mem.Tags = strings.Split(tagsStr, "|")
+	}
+	return mem
+}
+
 func sanitizeFTS5Query(query string) string {
 	terms := strings.Fields(query)
-	var safe []string
+	safe := make([]string, 0, len(terms))
 	for _, term := range terms {
 		term = strings.Trim(term, "\"'*():")
+		term = strings.ReplaceAll(term, "\"", "")
 		if term == "" {
 			continue
 		}
-		term = strings.ReplaceAll(term, "\"", "")
 		safe = append(safe, "\""+term+"\"")
 	}
 	if len(safe) == 0 {
@@ -857,13 +657,6 @@ func scanSource(ns sql.NullString) *string {
 		return &ns.String
 	}
 	return nil
-}
-
-func sourcePtr(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
 }
 
 func sourcePtrVal(s *string) sql.NullString {

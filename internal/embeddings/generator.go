@@ -10,6 +10,8 @@ import (
 	"unicode"
 
 	"golang.org/x/text/unicode/norm"
+
+	"github.com/rodascaar/synkro/internal/stopwords"
 )
 
 type EmbeddingGenerator interface {
@@ -35,18 +37,6 @@ const (
 )
 
 func NewTFIDFEmbeddingGenerator(cache *Cache) *TFIDFEmbeddingGenerator {
-	stopWords := make(map[string]bool)
-	for _, word := range []string{
-		"el", "la", "de", "que", "y", "a", "en", "un", "por",
-		"con", "no", "una", "su", "para", "es", "del", "los",
-		"the", "a", "an", "and", "are", "as", "at", "be", "by",
-		"for", "from", "has", "he", "in", "is", "it", "its", "of",
-		"on", "that", "the", "to", "was", "were", "will", "with",
-	} {
-		stopWords[word] = true
-		stopWords[strings.ToUpper(word)] = true
-	}
-
 	return &TFIDFEmbeddingGenerator{
 		dimension:         EmbeddingDimension,
 		cache:             cache,
@@ -54,7 +44,7 @@ func NewTFIDFEmbeddingGenerator(cache *Cache) *TFIDFEmbeddingGenerator {
 		documentFrequency: make(map[string]int),
 		totalDocuments:    0,
 		ngramSize:         3,
-		stopWords:         stopWords,
+		stopWords:         stopwords.NewSet(),
 		modelType:         "tfidf",
 	}
 }
@@ -157,26 +147,30 @@ func (g *TFIDFEmbeddingGenerator) generateEmbedding(tokens []string) []float32 {
 		idf := float32(math.Log(float64(g.totalDocuments+1)/float64(df+1))) + 1
 		score := tf * idf
 
-		hash := g.hashString(token)
-
-		for j := 0; j < g.dimension; j++ {
-			dim := (int(hash) + j) % g.dimension
-			if dim < 0 {
-				dim = -dim
-			}
-			embedding[dim] += score*float32(uint32(hash>>uint32(j%32))&1)*2 - 1
+		dim := int(g.hashString(token) % uint32(g.dimension))
+		sign := float32(1.0)
+		if g.hashSign(token)%2 == 1 {
+			sign = -1.0
 		}
+		embedding[dim] += sign * score
 	}
 
-	lengthNorm := float32(math.Sqrt(float64(len(tokens))))
-	if lengthNorm > 1e-6 {
-		invNorm := 1.0 / lengthNorm
+	norm := float32(math.Sqrt(float64(dotProduct(embedding, embedding))))
+	if norm > 1e-6 {
 		for i := range embedding {
-			embedding[i] *= invNorm
+			embedding[i] /= norm
 		}
 	}
 
 	return embedding
+}
+
+func dotProduct(a, b []float32) float32 {
+	var sum float32
+	for i := range a {
+		sum += a[i] * b[i]
+	}
+	return sum
 }
 
 func (g *TFIDFEmbeddingGenerator) hashString(s string) uint32 {
@@ -184,6 +178,17 @@ func (g *TFIDFEmbeddingGenerator) hashString(s string) uint32 {
 	for _, c := range s {
 		hash ^= uint32(c)
 		hash *= uint32(16777619)
+	}
+	return hash
+}
+
+// hashSign devuelve un hash decorrelacionado de hashString para la dirección
+// del signo del hashing trick.
+func (g *TFIDFEmbeddingGenerator) hashSign(s string) uint32 {
+	hash := uint32(0x9E3779B9)
+	for _, c := range s {
+		hash ^= uint32(c)
+		hash *= uint32(0x01000193)
 	}
 	return hash
 }

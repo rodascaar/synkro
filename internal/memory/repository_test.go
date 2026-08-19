@@ -91,6 +91,28 @@ func TestRepository_Get(t *testing.T) {
 	assert.Equal(t, mem.Title, fetched.Title)
 }
 
+func TestRepository_GetMany(t *testing.T) {
+	d, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := memory.NewRepository(d.DB())
+
+	memA := &memory.Memory{Type: "note", Title: "A", Content: "Content A", Status: "active"}
+	memB := &memory.Memory{Type: "note", Title: "B", Content: "Content B", Status: "active"}
+	require.NoError(t, repo.Create(context.Background(), memA))
+	require.NoError(t, repo.Create(context.Background(), memB))
+
+	mems, err := repo.GetMany(context.Background(), []string{memB.ID, "nonexistent", memA.ID, memB.ID})
+	assert.NoError(t, err)
+	assert.Len(t, mems, 2)
+	assert.Equal(t, memB.ID, mems[0].ID)
+	assert.Equal(t, memA.ID, mems[1].ID)
+
+	mems, err = repo.GetMany(context.Background(), nil)
+	assert.NoError(t, err)
+	assert.Empty(t, mems)
+}
+
 func TestRepository_Update(t *testing.T) {
 	d, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -191,6 +213,30 @@ func TestRepository_HybridSearch_MultipleResults(t *testing.T) {
 
 	for _, r := range results {
 		assert.Equal(t, "active", r.Memory.Status)
+	}
+}
+
+func TestRepository_Search_OnlyMatchesQuery(t *testing.T) {
+	d, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := memory.NewRepository(d.DB())
+
+	require.NoError(t, repo.Create(context.Background(), &memory.Memory{
+		Type: "note", Title: "Alpha Note", Content: "Content about alpha particles", Status: "active",
+	}))
+	require.NoError(t, repo.Create(context.Background(), &memory.Memory{
+		Type: "note", Title: "Beta Note", Content: "Content about beta particles", Status: "active",
+	}))
+	require.NoError(t, repo.Create(context.Background(), &memory.Memory{
+		Type: "note", Title: "Gamma Note", Content: "Content about gamma rays", Status: "active",
+	}))
+
+	memories, err := repo.Search(context.Background(), "beta", memory.MemoryFilter{})
+	require.NoError(t, err)
+	require.NotEmpty(t, memories)
+	for _, m := range memories {
+		assert.Equal(t, "Beta Note", m.Title, "result %q should not be returned for query 'beta'", m.Title)
 	}
 }
 

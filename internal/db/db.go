@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 type Database struct {
@@ -24,7 +25,7 @@ func New(path string) (*Database, error) {
 		}
 	}
 
-	db, err := sql.Open("sqlite3", path+"?_journal_mode=WAL&_foreign_keys=ON&_busy_timeout=5000&_txlock=immediate")
+	db, err := sql.Open("sqlite", buildDSN(path))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -50,6 +51,15 @@ func (d *Database) DB() *sql.DB {
 	return d.db
 }
 
+const dsnParams = "?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_txlock=immediate"
+
+func buildDSN(path string) string {
+	if strings.HasPrefix(path, "file:") {
+		return path + dsnParams
+	}
+	return "file:" + path + dsnParams
+}
+
 func (d *Database) Close() error {
 	if d.db != nil {
 		return d.db.Close()
@@ -73,7 +83,7 @@ func (d *Database) initSchema() error {
 
 	CREATE TABLE IF NOT EXISTS memory_embeddings (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		memory_id TEXT NOT NULL,
+		memory_id TEXT NOT NULL UNIQUE,
 		embedding BLOB NOT NULL,
 		created_at TEXT NOT NULL,
 		FOREIGN KEY (memory_id) REFERENCES memories(id) ON DELETE CASCADE
@@ -122,7 +132,7 @@ func (d *Database) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type);
 	CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status);
 	CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at DESC);
-	CREATE INDEX IF NOT EXISTS idx_memory_embeddings_memory ON memory_embeddings(memory_id);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_embeddings_memory ON memory_embeddings(memory_id);
 	CREATE INDEX IF NOT EXISTS idx_memory_relations_source ON memory_relations(source_id);
 	CREATE INDEX IF NOT EXISTS idx_memory_relations_target ON memory_relations(target_id);
 	CREATE INDEX IF NOT EXISTS idx_memory_relations_type ON memory_relations(type);
@@ -130,15 +140,6 @@ func (d *Database) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_session_memories_session ON session_memories(session_id);
 	CREATE INDEX IF NOT EXISTS idx_session_memories_delivered ON session_memories(delivered_at DESC);
 	CREATE INDEX IF NOT EXISTS idx_embedding_cache_hash ON embedding_cache(text_hash);
-
-	CREATE TABLE IF NOT EXISTS memory_tags (
-		memory_id TEXT NOT NULL,
-		tag TEXT NOT NULL,
-		PRIMARY KEY (memory_id, tag),
-		FOREIGN KEY (memory_id) REFERENCES memories(id) ON DELETE CASCADE
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_memory_tags_tag ON memory_tags(tag);
 	`
 
 	_, err := d.db.Exec(schema)

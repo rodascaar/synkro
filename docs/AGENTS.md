@@ -330,6 +330,39 @@ Activa contexto inteligente con pruning, session tracking y deduplicación.
 }
 ```
 
+### 8. Add Relation
+
+Agrega una relación entre dos memorias.
+
+**Parámetros:**
+- `source_id` (string, requerido): ID de la memoria origen
+- `target_id` (string, requerido): ID de la memoria destino
+- `type` (string, requerido): Tipo de relación (extends, depends_on, conflicts_with, example_of, part_of, related_to)
+- `strength` (number, opcional): Fuerza 0.0-1.0
+
+### 9. Get Relations
+
+Obtiene todas las relaciones de una memoria.
+
+**Parámetros:**
+- `memory_id` (string, requerido): ID de la memoria
+
+### 10. Delete Relation
+
+Elimina una relación entre dos memorias.
+
+**Parámetros:**
+- `source_id` (string, requerido): ID de la memoria origen
+- `target_id` (string, requerido): ID de la memoria destino
+
+### 11. Find Path
+
+Encuentra un camino entre dos memorias usando BFS.
+
+**Parámetros:**
+- `from_id` (string, requerido): ID de la memoria de origen
+- `to_id` (string, requerido): ID de la memoria de destino
+
 ## 🧠 Funciones Inteligentes
 
 ### 1. Búsqueda Híbrida
@@ -343,9 +376,9 @@ Combina FTS5 (full-text search) con embeddings vectoriales:
 
 ### 2. Session Tracking
 
-Evita repeticiones con Ring Buffer:
+Evita repeticiones de memoria entregada:
 
-- **Ring buffer (20)**: Mantiene últimas 20 memorias entregadas
+- **Historial de entregas**: Mantiene las últimas memorias entregadas por sesión
 - **Deduplicación de queries**: Detecta queries repetitivos
 - **Tracking por sesión**: Soporta múltiples sesiones concurrentes
 - **Priority marking**: Marca resultados como high/low priority
@@ -354,10 +387,9 @@ Evita repeticiones con Ring Buffer:
 
 Filtra resultados inteligentemente:
 
-- **Por similitud**: Umbral configurable (default: 0.5)
+- **Por similitud**: Descarta resultados con similitud muy baja
 - **Por contenido**: Elimina contenido repetitivo
 - **Por densidad**: Prefiere memorias más densas
-- **Grounding**: Prefijos que indican fuente de información
 
 ### 4. Grafo de Relaciones
 
@@ -415,27 +447,14 @@ Agente (con Synkro):
 # Ruta de base de datos (default: memory.db)
 export SYNKRO_DB_PATH=~/custom/path/memory.db
 
-# Modo debug
-export SYNKRO_DEBUG=true
+# Tipo de modelo: tfidf u onnx (default: tfidf)
+export SYNKRO_MODEL_TYPE=onnx
 
-# Límite de tokens (default: 4000)
-export SYNKRO_MAX_TOKENS=4000
+# Directorio de descarga de modelos (default: models)
+export SYNKRO_MODEL_DIR=models
 
-# Tamaño del ring buffer (default: 20)
-export SYNKRO_SESSION_BUFFER=20
-```
-
-### Ajustes de Rendimiento
-
-```bash
-# Memoria caché para embeddings (default: 1000)
-export SYNKRO_CACHE_SIZE=1000
-
-# Umbral de similitud (default: 0.5)
-export SYNKRO_SIMILARITY_THRESHOLD=0.5
-
-# Tamaño de embeddings (default: 384)
-export SYNKRO_EMBEDDING_DIM=384
+# Modelo ONNX por defecto
+export SYNKRO_PREFERRED_MODEL=all-MiniLM-L6-v2
 ```
 
 ## 🔍 Debugging
@@ -443,8 +462,8 @@ export SYNKRO_EMBEDDING_DIM=384
 ### Ver Logs del Servidor MCP
 
 ```bash
-# Iniciar con modo debug
-SYNKRO_DEBUG=true ./synkro mcp
+# Iniciar el servidor MCP
+./synkro mcp
 ```
 
 ### Verificar Conexión MCP

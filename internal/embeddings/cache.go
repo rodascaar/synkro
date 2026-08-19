@@ -112,49 +112,6 @@ func (c *Cache) Set(ctx context.Context, text string, embedding []float32, model
 	return nil
 }
 
-func (c *Cache) Prune(ctx context.Context) error {
-	_, err := c.db.ExecContext(ctx, "DELETE FROM embedding_cache WHERE created_at < datetime('now', -30 days)")
-	if err != nil {
-		return err
-	}
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	cutoff := time.Now().AddDate(0, 0, -30)
-	var toRemove []string
-	for e := c.order.Back(); e != nil; e = e.Prev() {
-		entry := e.Value.(*cacheEntry)
-		if entry.timestamp.Before(cutoff) {
-			toRemove = append(toRemove, entry.key)
-		} else {
-			break
-		}
-	}
-	for _, key := range toRemove {
-		if elem, ok := c.items[key]; ok {
-			c.order.Remove(elem)
-			delete(c.items, key)
-		}
-	}
-
-	return nil
-}
-
-func (c *Cache) Clear(ctx context.Context) error {
-	_, err := c.db.ExecContext(ctx, "DELETE FROM embedding_cache")
-	if err != nil {
-		return err
-	}
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.items = make(map[string]*list.Element)
-	c.order.Init()
-	return nil
-}
-
 func (c *Cache) evict() {
 	for c.order.Len() > c.maxSize {
 		oldest := c.order.Back()

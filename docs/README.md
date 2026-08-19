@@ -123,9 +123,7 @@ synkro/
 ├── internal/
 │   ├── db/
 │   │   ├── db.go (Database wrapper + schema)
-│   │   ├── migrations.go (Migration system)
-│   │   ├── vector.go (sqlite-vec operations)
-│   │   └── extensions/ (sqlite-vec por plataforma)
+│   │   └── migrations.go (Migration system)
 │   ├── errors/
 │   │   └── errors.go (Synkro error types)
 │   ├── embeddings/
@@ -133,13 +131,15 @@ synkro/
 │   │   └── manager.go (Embedding manager con MiniLM support)
 │   ├── memory/
 │   │   ├── model.go (Memory, Relation, Embedding models)
-│   │   └── repository.go (CRUD + HybridSearch)
+│   │   └── repository.go (CRUD + búsqueda unificada)
 │   ├── graph/
 │   │   └── graph.go (Relations, BFS path finding)
 │   ├── pruner/
-│   │   └── pruner.go (Similarity filtering, grounding)
+│   │   └── pruner.go (Filtrado por similitud y contenido)
 │   ├── session/
-│   │   └── tracker.go (Ring buffer, duplicate detection)
+│   │   └── tracker.go (Deduplicación de queries)
+│   ├── stopwords/
+│   │   └── stopwords.go (Stopwords compartidas)
 │   ├── mcp/
 │   │   └── handlers.go (MCP Server methods, no globals)
 │   └── tui/
@@ -325,8 +325,7 @@ MIT License - ver archivo [LICENSE](./LICENSE) para detalles
 
 ## 🙏 Agradecimientos
 
-- [sqlite-vec](https://github.com/asg017/sqlite-vec) - Extensiones vectoriales para SQLite
-- [go-sqlite3](https://github.com/mattn/go-sqlite3) - Driver de SQLite para Go
+- [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) - Driver de SQLite puro en Go
 - [cobra](https://github.com/spf13/cobra) - Framework CLI para Go
 - [Bubble Tea](https://github.com/charmbracelet/bubbletea) - Framework de TUI para Go
 - [Lipgloss](https://github.com/charmbracelet/lipgloss) - Styling para terminales en Go
@@ -335,7 +334,7 @@ MIT License - ver archivo [LICENSE](./LICENSE) para detalles
 
 **Synkro v2** - Motor de Contexto Inteligente para LLMs
 
-**Build:** 8.7MB
+**Build:** ~19MB (puro Go, sin dependencias nativas)
 **Estado:** 100% Completado ✅
 **TUI:** Profesional con Bubble Tea ✅
 **MCP:** Integrado y listo para usar ✅

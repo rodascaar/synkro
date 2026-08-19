@@ -10,7 +10,6 @@ import (
 func TestNewContextPruner(t *testing.T) {
 	p := NewContextPruner()
 	assert.NotNil(t, p)
-	assert.Equal(t, 0.5, p.similarityThreshold)
 	assert.Equal(t, 4000, p.maxTokens)
 	assert.NotEmpty(t, p.stopWords)
 	assert.True(t, p.stopWords["the"])
@@ -70,21 +69,6 @@ func TestPrune_FiltersByContentRelevance(t *testing.T) {
 	pruned := p.Prune(results, "database design")
 	assert.Len(t, pruned, 1)
 	assert.Contains(t, pruned[0].Memory.Content, "database")
-}
-
-func TestWithGrounding(t *testing.T) {
-	p := NewContextPruner()
-	mem := &memory.Memory{
-		ID:      "abc123",
-		Title:   "Test Title",
-		Content: "Test content",
-	}
-
-	result := p.WithGrounding(mem)
-	assert.Contains(t, result, "abc123")
-	assert.Contains(t, result, "Test Title")
-	assert.Contains(t, result, "Test content")
-	assert.Contains(t, result, "PALACIO MENTAL")
 }
 
 func TestIsLowContent_Matches(t *testing.T) {
