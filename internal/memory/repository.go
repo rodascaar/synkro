@@ -19,6 +19,11 @@ const (
 	// searchFetchMultiplier amplía la ventana de candidatos previo al corte final.
 	searchFetchMultiplier = 3
 
+	// vectorFetchMultiplier widens the vector-scoring window beyond searchFetchMultiplier.
+	// Vector scoring is ordered by pinned/created_at, so a small window would only
+	// rerank the most recent memories and miss older but highly relevant ones.
+	vectorFetchMultiplier = 20
+
 	weightFTS5Only   = 0.6 // Match solo FTS5 (sin embedding).
 	weightVectorOnly = 0.8 // Match solo vectorial (sin FTS5).
 	weightBoth       = 0.5 // Peso de cada componente cuando hay match híbrido.
@@ -277,8 +282,9 @@ func (r *Repository) searchWithBM25(ctx context.Context, query string, filter Hy
 	return results, nil
 }
 
-// scoreByVector calcula similitud coseno in-memory contra todos los candidatos
-// que cumplen el filtro y tienen embedding.
+// scoreByVector calcula similitud coseno in-memory contra los candidatos que
+// cumplen el filtro y tienen embedding, usando una ventana más amplia que el
+// límite solicitado para no descartar memorias antiguas relevantes.
 func (r *Repository) scoreByVector(ctx context.Context, queryEmbedding []float32, filter HybridSearchFilter, limit int) (map[string]*VectorResult, error) {
 	where, args := buildFilterWhere(filter)
 
@@ -290,7 +296,7 @@ func (r *Repository) scoreByVector(ctx context.Context, queryEmbedding []float32
 		ORDER BY m.pinned DESC, m.created_at DESC
 		LIMIT ?
 	`, where)
-	args = append(args, limit)
+	args = append(args, limit*vectorFetchMultiplier)
 
 	rows, err := r.db.QueryContext(ctx, sqlQuery, args...)
 	if err != nil {
