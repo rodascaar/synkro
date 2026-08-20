@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 )
@@ -40,6 +41,7 @@ func NewCache(db *sql.DB, maxSize int) *Cache {
 func (c *Cache) loadFromDB(ctx context.Context) {
 	rows, err := c.db.QueryContext(ctx, "SELECT text, embedding FROM embedding_cache")
 	if err != nil {
+		log.Printf("warning: failed to load embedding cache from DB: %v", err)
 		return
 	}
 	defer func() { _ = rows.Close() }()

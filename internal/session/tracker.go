@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"log"
 	"sort"
 	"sync"
 	"time"
@@ -45,18 +46,37 @@ func NewSessionTracker(repo *Repository) *SessionTracker {
 func (st *SessionTracker) loadFromDB(ctx context.Context) {
 	rows, err := st.repo.db.QueryContext(ctx, "SELECT id FROM sessions")
 	if err != nil {
+		log.Printf("warning: failed to load sessions from DB: %v", err)
 		return
 	}
-	defer func() { _ = rows.Close() }()
 
+	// Collect all IDs first and close the rows before issuing per-session
+	// queries. Loading sessions while rows are still open would deadlock on a
+	// single-connection pool (database/sql reuses the held connection).
+	var ids []string
 	for rows.Next() {
 		var sessionID string
 		if err := rows.Scan(&sessionID); err != nil {
+			log.Printf("warning: failed to scan session row: %v", err)
 			continue
 		}
+		ids = append(ids, sessionID)
+	}
+	if err := rows.Close(); err != nil {
+		log.Printf("warning: failed to close sessions rows: %v", err)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("warning: error reading sessions: %v", err)
+		return
+	}
 
+	for _, sessionID := range ids {
 		session, err := st.repo.Get(ctx, sessionID)
-		if err == nil && session != nil {
+		if err != nil {
+			log.Printf("warning: failed to load session %q from DB: %v", sessionID, err)
+			continue
+		}
+		if session != nil {
 			st.mu.Lock()
 			st.sessions[sessionID] = session
 			st.mu.Unlock()

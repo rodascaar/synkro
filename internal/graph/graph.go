@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/rodascaar/synkro/internal/memory"
@@ -38,6 +39,7 @@ func (g *Graph) loadFromDB(ctx context.Context) {
 
 	relations, err := g.graphRepo.LoadAll(ctx)
 	if err != nil {
+		log.Printf("warning: failed to load relations from DB: %v", err)
 		return
 	}
 
