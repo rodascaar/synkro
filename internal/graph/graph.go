@@ -33,22 +33,34 @@ func NewGraph(repo *memory.Repository, graphRepo *Repository) *Graph {
 }
 
 func (g *Graph) loadFromDB(ctx context.Context) {
+	if err := g.Refresh(ctx); err != nil {
+		log.Printf("warning: failed to load relations from DB: %v", err)
+	}
+}
+
+// Refresh reloads the in-memory relation indexes from the database, replacing
+// any local state. Useful for long-running processes (e.g. the MCP server)
+// where relations may be written by another process.
+func (g *Graph) Refresh(ctx context.Context) error {
 	if g.graphRepo == nil {
-		return
+		return nil
 	}
 
 	relations, err := g.graphRepo.LoadAll(ctx)
 	if err != nil {
-		log.Printf("warning: failed to load relations from DB: %v", err)
-		return
+		return fmt.Errorf("failed to load relations: %w", err)
 	}
 
 	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.outgoing = make(map[string][]*memory.MemoryRelation)
+	g.incoming = make(map[string][]*memory.MemoryRelation)
 	for _, rel := range relations {
 		g.outgoing[rel.SourceID] = append(g.outgoing[rel.SourceID], rel)
 		g.incoming[rel.TargetID] = append(g.incoming[rel.TargetID], rel)
 	}
-	g.mu.Unlock()
+	return nil
 }
 
 func (g *Graph) AddRelation(ctx context.Context, relation *memory.MemoryRelation) error {

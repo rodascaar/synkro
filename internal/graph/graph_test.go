@@ -162,6 +162,39 @@ func TestGraph_AddRelation(t *testing.T) {
 	assert.Len(t, relations, 1)
 }
 
+func TestGraph_Refresh_PicksUpExternalRelations(t *testing.T) {
+	database, memRepo, graphRepo := setupGraphTestDB(t)
+	ctx := context.Background()
+
+	insertMemory(t, database.DB(), "a")
+	insertMemory(t, database.DB(), "b")
+
+	g := NewGraph(memRepo, graphRepo)
+
+	// Simulate another process writing a relation directly to the DB.
+	external := NewRepository(database.DB())
+	rel := &memory.MemoryRelation{
+		SourceID: "a", TargetID: "b", Type: "related_to",
+		Strength: 0.7, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	require.NoError(t, external.Add(ctx, rel))
+
+	relations, err := g.GetRelations(ctx, "a")
+	require.NoError(t, err)
+	assert.Empty(t, relations)
+
+	require.NoError(t, g.Refresh(ctx))
+
+	relations, err = g.GetRelations(ctx, "a")
+	require.NoError(t, err)
+	assert.Len(t, relations, 1)
+}
+
+func TestGraph_Refresh_NilRepo(t *testing.T) {
+	g := NewGraph(nil, nil)
+	require.NoError(t, g.Refresh(context.Background()))
+}
+
 func TestGraph_FindPath_Direct(t *testing.T) {
 	database, memRepo, graphRepo := setupGraphTestDB(t)
 	ctx := context.Background()

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/rodascaar/synkro/internal/graph"
@@ -437,7 +438,43 @@ func (s *Server) Run(ctx context.Context) error {
 	log.SetOutput(os.Stderr)
 	log.Printf("Synkro MCP Server v%s starting...\n", s.serverVersion)
 
+	go s.startStateRefresh(ctx)
+
 	return server.Run(ctx, &mcp.StdioTransport{})
+}
+
+// stateRefreshInterval keeps the in-memory graph and session indexes in sync
+// with writes made by other processes.
+const stateRefreshInterval = 5 * time.Second
+
+func (s *Server) startStateRefresh(ctx context.Context) {
+	ticker := time.NewTicker(stateRefreshInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := s.refreshState(ctx); err != nil {
+				log.Printf("warning: state refresh failed: %v", err)
+			}
+		}
+	}
+}
+
+func (s *Server) refreshState(ctx context.Context) error {
+	if s.graph != nil {
+		if err := s.graph.Refresh(ctx); err != nil {
+			return fmt.Errorf("graph refresh: %w", err)
+		}
+	}
+	if s.sessionTracker != nil {
+		if err := s.sessionTracker.Refresh(ctx); err != nil {
+			return fmt.Errorf("session refresh: %w", err)
+		}
+	}
+	return nil
 }
 
 func (s *Server) handleAddMemory(ctx context.Context, req *mcp.CallToolRequest, args AddMemoryArgs) (*mcp.CallToolResult, any, error) {

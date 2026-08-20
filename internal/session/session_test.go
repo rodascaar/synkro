@@ -178,6 +178,33 @@ func TestSessionTracker_WithDB(t *testing.T) {
 	assert.NotNil(t, got.DeliveredMemories["mem1"])
 }
 
+func TestSessionTracker_Refresh_MergesExternalSessions(t *testing.T) {
+	database := setupTestDB(t)
+	repo := NewRepository(database.DB())
+	tracker := NewSessionTracker(repo)
+	ctx := context.Background()
+
+	tracker.GetOrCreate(ctx, "local")
+
+	// Simulate another process persisting a session directly to the DB.
+	external := NewRepository(database.DB())
+	ext := &Session{ID: "external", LastQuery: "query-from-other-process", CreatedAt: now(), UpdatedAt: now()}
+	require.NoError(t, external.Save(ctx, ext))
+
+	require.NoError(t, tracker.Refresh(ctx))
+
+	got := tracker.GetOrCreate(ctx, "external")
+	assert.Equal(t, "external", got.ID)
+	assert.Equal(t, "query-from-other-process", got.LastQuery)
+
+	assert.Equal(t, "local", tracker.GetOrCreate(ctx, "local").ID)
+}
+
+func TestSessionTracker_Refresh_NilRepo(t *testing.T) {
+	tracker := NewSessionTracker(nil)
+	require.NoError(t, tracker.Refresh(context.Background()))
+}
+
 func TestSessionTracker_GetOrCreate_Idempotent(t *testing.T) {
 	tracker := NewSessionTracker(nil)
 	ctx := context.Background()

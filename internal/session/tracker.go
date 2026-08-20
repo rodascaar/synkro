@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sort"
 	"sync"
@@ -44,15 +45,26 @@ func NewSessionTracker(repo *Repository) *SessionTracker {
 }
 
 func (st *SessionTracker) loadFromDB(ctx context.Context) {
+	if err := st.Refresh(ctx); err != nil {
+		log.Printf("warning: failed to load sessions from DB: %v", err)
+	}
+}
+
+// Refresh loads sessions persisted by other processes into memory without
+// overwriting sessions that were updated locally. Useful for long-running
+// processes (e.g. the MCP server).
+func (st *SessionTracker) Refresh(ctx context.Context) error {
+	if st.repo == nil {
+		return nil
+	}
+
 	rows, err := st.repo.db.QueryContext(ctx, "SELECT id FROM sessions")
 	if err != nil {
-		log.Printf("warning: failed to load sessions from DB: %v", err)
-		return
+		return fmt.Errorf("failed to load sessions: %w", err)
 	}
 
 	// Collect all IDs first and close the rows before issuing per-session
-	// queries. Loading sessions while rows are still open would deadlock on a
-	// single-connection pool (database/sql reuses the held connection).
+	// queries to avoid deadlocking on a single-connection pool.
 	var ids []string
 	for rows.Next() {
 		var sessionID string
@@ -66,22 +78,26 @@ func (st *SessionTracker) loadFromDB(ctx context.Context) {
 		log.Printf("warning: failed to close sessions rows: %v", err)
 	}
 	if err := rows.Err(); err != nil {
-		log.Printf("warning: error reading sessions: %v", err)
-		return
+		return fmt.Errorf("failed to read sessions: %w", err)
 	}
 
+	st.mu.Lock()
+	defer st.mu.Unlock()
+
 	for _, sessionID := range ids {
+		if _, ok := st.sessions[sessionID]; ok {
+			continue
+		}
 		session, err := st.repo.Get(ctx, sessionID)
 		if err != nil {
 			log.Printf("warning: failed to load session %q from DB: %v", sessionID, err)
 			continue
 		}
 		if session != nil {
-			st.mu.Lock()
 			st.sessions[sessionID] = session
-			st.mu.Unlock()
 		}
 	}
+	return nil
 }
 
 func (st *SessionTracker) getOrCreateLocked(sessionID string) *Session {
