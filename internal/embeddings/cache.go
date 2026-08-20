@@ -34,8 +34,30 @@ func NewCache(db *sql.DB, maxSize int) *Cache {
 		maxSize: maxSize,
 	}
 
+	c.pruneFromDB(context.Background())
 	c.loadFromDB(context.Background())
 	return c
+}
+
+// pruneFromDB deletes embedding_cache rows beyond maxSize (by creation time),
+// keeping the SQLite cache bounded across restarts. The in-memory LRU already
+// caps entries during a run; this mirrors that cap on disk.
+func (c *Cache) pruneFromDB(ctx context.Context) {
+	if c.maxSize <= 0 {
+		return
+	}
+
+	_, err := c.db.ExecContext(ctx, `
+		DELETE FROM embedding_cache
+		WHERE text_hash IN (
+			SELECT text_hash FROM embedding_cache
+			ORDER BY created_at DESC
+			LIMIT -1 OFFSET ?
+		)
+	`, c.maxSize)
+	if err != nil {
+		log.Printf("warning: failed to prune embedding cache: %v", err)
+	}
 }
 
 func (c *Cache) loadFromDB(ctx context.Context) {

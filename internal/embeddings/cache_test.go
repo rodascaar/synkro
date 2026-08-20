@@ -3,11 +3,13 @@ package embeddings
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"testing"
+	"time"
 
-	_ "modernc.org/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 func setupCacheDB(t *testing.T) (*sql.DB, func()) {
@@ -117,6 +119,27 @@ func TestCache_Persistence(t *testing.T) {
 	got, ok := cache2.Get(ctx, "persist me")
 	assert.True(t, ok)
 	assert.Equal(t, embedding, got)
+}
+
+func TestCache_PrunesSQLiteOnInit(t *testing.T) {
+	sqlDB, cleanup := setupCacheDB(t)
+	defer cleanup()
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	for i := 0; i < 5; i++ {
+		_, err := sqlDB.Exec(`INSERT INTO embedding_cache (text_hash, text, embedding, model_type, created_at) VALUES (?, ?, ?, 'tfidf', ?)`,
+			fmt.Sprintf("hash-%d", i), fmt.Sprintf("text %d", i), []byte{1, 2, 3, 4}, now)
+		require.NoError(t, err)
+	}
+
+	cache := NewCache(sqlDB, 3)
+
+	var count int
+	require.NoError(t, sqlDB.QueryRow("SELECT COUNT(*) FROM embedding_cache").Scan(&count))
+	assert.Equal(t, 3, count)
+
+	// The in-memory LRU should have loaded only the surviving rows.
+	assert.Equal(t, 3, cache.order.Len())
 }
 
 func TestCache_DifferentTextsSameHash(t *testing.T) {
