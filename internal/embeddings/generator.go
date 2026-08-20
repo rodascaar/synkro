@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"math"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"unicode"
@@ -87,7 +88,9 @@ func (g *TFIDFEmbeddingGenerator) Generate(ctx context.Context, text string) ([]
 	}
 
 	tokens := g.tokenize(text)
-	embedding := g.generateEmbedding(tokens)
+	g.mu.RLock()
+	embedding := g.generateEmbedding(tokens, g.documentFrequency, g.totalDocuments)
+	g.mu.RUnlock()
 
 	g.mu.Lock()
 	g.updateVocabulary(tokens)
@@ -101,16 +104,62 @@ func (g *TFIDFEmbeddingGenerator) Generate(ctx context.Context, text string) ([]
 	return embedding, nil
 }
 
+// GenerateBatch computes embeddings for all texts, parallelizing the
+// tokenization and embedding math across CPUs. Document-frequency state is read
+// under a shared lock (readers run concurrently; writers wait until every read
+// finishes), so all documents in the batch share the same idf baseline and the
+// resulting embeddings are deterministic. Vocabulary state is updated once all
+// computations are done.
 func (g *TFIDFEmbeddingGenerator) GenerateBatch(ctx context.Context, texts []string) ([][]float32, error) {
-	embeddings := make([][]float32, len(texts))
-	for i, text := range texts {
-		emb, err := g.Generate(ctx, text)
-		if err != nil {
-			return nil, err
-		}
-		embeddings[i] = emb
+	if len(texts) == 0 {
+		return [][]float32{}, nil
 	}
-	return embeddings, nil
+
+	results := make([][]float32, len(texts))
+	tokenLists := make([][]string, len(texts))
+	processed := make([]bool, len(texts))
+
+	sem := make(chan struct{}, runtime.NumCPU())
+	var wg sync.WaitGroup
+	for i, text := range texts {
+		if g.cache != nil {
+			if cached, exists := g.cache.Get(ctx, text); exists {
+				results[i] = cached
+				continue
+			}
+		}
+		processed[i] = true
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int, text string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			tokens := g.tokenize(text)
+			g.mu.RLock()
+			results[i] = g.generateEmbedding(tokens, g.documentFrequency, g.totalDocuments)
+			g.mu.RUnlock()
+			tokenLists[i] = tokens
+		}(i, text)
+	}
+	wg.Wait()
+
+	g.mu.Lock()
+	for i := range texts {
+		if !processed[i] {
+			continue
+		}
+		g.updateVocabulary(tokenLists[i])
+		g.totalDocuments++
+	}
+	g.mu.Unlock()
+
+	for i, text := range texts {
+		if processed[i] && g.cache != nil {
+			_ = g.cache.Set(ctx, text, results[i], g.modelType)
+		}
+	}
+
+	return results, nil
 }
 
 func (g *TFIDFEmbeddingGenerator) Dimension() int {
@@ -160,7 +209,7 @@ func (g *TFIDFEmbeddingGenerator) generateNgrams(tokens []string, n int) []strin
 	return ngrams
 }
 
-func (g *TFIDFEmbeddingGenerator) generateEmbedding(tokens []string) []float32 {
+func (g *TFIDFEmbeddingGenerator) generateEmbedding(tokens []string, df map[string]int, totalDocs int) []float32 {
 	embedding := make([]float32, g.dimension)
 
 	tokenCounts := make(map[string]int)
@@ -170,11 +219,11 @@ func (g *TFIDFEmbeddingGenerator) generateEmbedding(tokens []string) []float32 {
 
 	for _, token := range tokens {
 		tf := float32(tokenCounts[token]) / float32(len(tokens))
-		df := float32(g.documentFrequency[token])
-		if df == 0 {
-			df = 1
+		documentFrequency := float32(df[token])
+		if documentFrequency == 0 {
+			documentFrequency = 1
 		}
-		idf := float32(math.Log(float64(g.totalDocuments+1)/float64(df+1))) + 1
+		idf := float32(math.Log(float64(totalDocs+1)/float64(documentFrequency+1))) + 1
 		score := tf * idf
 
 		dim := int(g.hashString(token) % uint32(g.dimension))
