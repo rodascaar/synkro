@@ -591,12 +591,7 @@ func (r *Repository) SimilarMemories(ctx context.Context, text string, threshold
 		return nil, err
 	}
 
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, ''), COALESCE(m.topic_key, ''), m.pinned, e.embedding
-		FROM memory_embeddings e
-		INNER JOIN memories m ON m.id = e.memory_id
-		WHERE m.status = 'active'
-	`)
+	rows, err := r.querySimilarCandidates(ctx, text)
 	if err != nil {
 		return nil, err
 	}
@@ -649,10 +644,7 @@ func (r *Repository) DetectConflicts(ctx context.Context, text, excludeID string
 		querySet[t] = true
 	}
 
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, created_at, updated_at, type, title, content, COALESCE(source, ''), status, COALESCE(tags, ''), COALESCE(topic_key, ''), pinned
-		FROM memories WHERE status = 'active'
-	`)
+	rows, err := r.queryConflictCandidates(ctx, queryTokens)
 	if err != nil {
 		return nil, err
 	}
@@ -704,6 +696,68 @@ func jaccardTokens(query map[string]bool, text string) float64 {
 		return 0
 	}
 	return float64(intersection) / float64(len(union))
+}
+
+// fts5OrQuery builds an FTS5 OR query from already-sanitized tokens (only
+// [\w], no FTS5 special characters). Returns "" when there are no tokens.
+func fts5OrQuery(tokens []string) string {
+	if len(tokens) == 0 {
+		return ""
+	}
+	quoted := make([]string, len(tokens))
+	for i, t := range tokens {
+		quoted[i] = `"` + t + `"`
+	}
+	return strings.Join(quoted, " OR ")
+}
+
+// querySimilarCandidates returns active memories with embeddings that share at
+// least one token with text. Prefers an FTS5 prefilter to avoid scanning the
+// whole table; degrades to a full scan when FTS5 is unavailable. Because
+// TF-IDF embeddings are built from tokens, two texts without shared tokens have
+// cosine ≈ 0, so the prefilter is a sound shortcut for similarities above any
+// positive threshold.
+func (r *Repository) querySimilarCandidates(ctx context.Context, text string) (*sql.Rows, error) {
+	if ftsQuery := fts5OrQuery(embeddings.TokenizeText(text)); ftsQuery != "" {
+		rows, err := r.db.QueryContext(ctx, `
+			SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, ''), COALESCE(m.topic_key, ''), m.pinned, e.embedding
+			FROM memory_embeddings e
+			INNER JOIN memories m ON m.id = e.memory_id
+			INNER JOIN memories_fts f ON m.id = f.id
+			WHERE m.status = 'active' AND memories_fts MATCH ?
+		`, ftsQuery)
+		if err == nil {
+			return rows, nil
+		}
+	}
+	return r.db.QueryContext(ctx, `
+		SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, ''), COALESCE(m.topic_key, ''), m.pinned, e.embedding
+		FROM memory_embeddings e
+		INNER JOIN memories m ON m.id = e.memory_id
+		WHERE m.status = 'active'
+	`)
+}
+
+// queryConflictCandidates returns active memories that are candidates for
+// conflict with the given text. Prefers an FTS5 prefilter on shared tokens
+// (any conflict with token overlap > 0 requires at least one shared token) and
+// degrades to a full scan when FTS5 is unavailable.
+func (r *Repository) queryConflictCandidates(ctx context.Context, queryTokens []string) (*sql.Rows, error) {
+	if ftsQuery := fts5OrQuery(queryTokens); ftsQuery != "" {
+		rows, err := r.db.QueryContext(ctx, `
+			SELECT m.id, m.created_at, m.updated_at, m.type, m.title, m.content, COALESCE(m.source, ''), m.status, COALESCE(m.tags, ''), COALESCE(m.topic_key, ''), m.pinned
+			FROM memories m
+			INNER JOIN memories_fts f ON m.id = f.id
+			WHERE m.status = 'active' AND memories_fts MATCH ?
+		`, ftsQuery)
+		if err == nil {
+			return rows, nil
+		}
+	}
+	return r.db.QueryContext(ctx, `
+		SELECT id, created_at, updated_at, type, title, content, COALESCE(source, ''), status, COALESCE(tags, ''), COALESCE(topic_key, ''), pinned
+		FROM memories WHERE status = 'active'
+	`)
 }
 
 // MaxSimilarity devuelve la similitud coseno máxima entre el texto y las
