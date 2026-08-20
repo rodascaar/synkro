@@ -26,8 +26,31 @@ type Server struct {
 
 const defaultConflictThreshold = 0.7
 
-func NewServer(repo *memory.Repository, g *graph.Graph, st *session.SessionTracker, cp *pruner.ContextPruner) *Server {
-	return &Server{
+// ServerOption configures a Server at construction time.
+type ServerOption func(*Server)
+
+// WithVersion sets the server version reported in the MCP handshake.
+func WithVersion(v string) ServerOption {
+	return func(s *Server) { s.serverVersion = v }
+}
+
+// WithEmbeddingType sets the embedding model type (tfidf or onnx).
+func WithEmbeddingType(t string) ServerOption {
+	return func(s *Server) { s.embeddingType = t }
+}
+
+// WithConflictThreshold sets the similarity threshold for detecting potential
+// conflicts between memories (0.0 to 1.0). Values outside (0, 1] are ignored.
+func WithConflictThreshold(t float64) ServerOption {
+	return func(s *Server) {
+		if t > 0 && t <= 1 {
+			s.conflictThreshold = t
+		}
+	}
+}
+
+func NewServer(repo *memory.Repository, g *graph.Graph, st *session.SessionTracker, cp *pruner.ContextPruner, opts ...ServerOption) *Server {
+	s := &Server{
 		repo:              repo,
 		graph:             g,
 		sessionTracker:    st,
@@ -35,22 +58,12 @@ func NewServer(repo *memory.Repository, g *graph.Graph, st *session.SessionTrack
 		serverVersion:     "1.0",
 		conflictThreshold: defaultConflictThreshold,
 	}
-}
 
-func (s *Server) SetVersion(v string) {
-	s.serverVersion = v
-}
-
-func (s *Server) SetEmbeddingType(t string) {
-	s.embeddingType = t
-}
-
-// SetConflictThreshold sets the similarity threshold for detecting potential
-// conflicts between memories (0.0 to 1.0).
-func (s *Server) SetConflictThreshold(t float64) {
-	if t > 0 && t <= 1 {
-		s.conflictThreshold = t
+	for _, opt := range opts {
+		opt(s)
 	}
+
+	return s
 }
 
 func (s *Server) Run(ctx context.Context) error {

@@ -105,7 +105,7 @@ func (st *SessionTracker) GetOrCreate(ctx context.Context, sessionID string) *Se
 	st.mu.Unlock()
 
 	if st.repo != nil {
-		_ = st.repo.Save(context.Background(), session)
+		_ = st.repo.Save(ctx, session)
 	}
 
 	return session
@@ -124,7 +124,7 @@ func (st *SessionTracker) MarkAsDelivered(ctx context.Context, sessionID, memory
 
 	if st.repo != nil {
 		if !existed {
-			_ = st.repo.Save(context.Background(), session)
+			_ = st.repo.Save(ctx, session)
 		}
 		_ = st.repo.MarkDelivered(ctx, sessionID, memoryID)
 	}

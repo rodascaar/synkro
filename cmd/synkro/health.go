@@ -141,9 +141,7 @@ var healthCmd = &cobra.Command{
 				allOK = false
 			}
 
-			mcpServer := mcpserver.NewServer(repo, g, st, cp)
-			mcpServer.SetVersion(Version)
-			mcpServer.SetEmbeddingType(cfg.ModelType)
+			mcpServer := mcpserver.NewServer(repo, g, st, cp, mcpserver.WithVersion(Version), mcpserver.WithEmbeddingType(cfg.ModelType))
 			if mcpServer != nil {
 				fmt.Println("  ✅ MCP server can be started")
 			} else {

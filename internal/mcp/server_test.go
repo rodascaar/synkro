@@ -22,8 +22,7 @@ func TestServer_Run_StartsAndStops(t *testing.T) {
 	defer func() { _ = database.Close() }()
 
 	memRepo := memory.NewRepository(database.DB())
-	server := mcp.NewServer(memRepo, nil, nil, nil)
-	server.SetVersion("test-1.0.0")
+	server := mcp.NewServer(memRepo, nil, nil, nil, mcp.WithVersion("test-1.0.0"))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -41,14 +40,13 @@ func TestServer_Run_StartsAndStops(t *testing.T) {
 	}
 }
 
-func TestServer_SetVersion(t *testing.T) {
+func TestServer_NewServerOptions(t *testing.T) {
 	tmpFile := t.TempDir() + "/test.db"
 	database, err := db.New(tmpFile)
 	require.NoError(t, err)
 	defer func() { _ = database.Close() }()
 
 	memRepo := memory.NewRepository(database.DB())
-	server := mcp.NewServer(memRepo, nil, nil, nil)
-
-	server.SetVersion("2.0.0")
+	server := mcp.NewServer(memRepo, nil, nil, nil, mcp.WithVersion("2.0.0"), mcp.WithEmbeddingType("tfidf"))
+	require.NotNil(t, server)
 }

@@ -599,12 +599,11 @@ var mcpCmd = &cobra.Command{
 
 		cp := pruner.NewContextPruner()
 
-		mcpServer := mcpserver.NewServer(repo, g, st, cp)
-		mcpServer.SetVersion(Version)
-		mcpServer.SetEmbeddingType(cfg.ModelType)
+		opts := []mcpserver.ServerOption{mcpserver.WithVersion(Version), mcpserver.WithEmbeddingType(cfg.ModelType)}
 		if cfg.ConflictThreshold > 0 {
-			mcpServer.SetConflictThreshold(cfg.ConflictThreshold)
+			opts = append(opts, mcpserver.WithConflictThreshold(cfg.ConflictThreshold))
 		}
+		mcpServer := mcpserver.NewServer(repo, g, st, cp, opts...)
 		log.Printf("[startup] ready to serve (total: %v)", time.Since(start))
 
 		if err := mcpServer.Run(context.Background()); err != nil {
