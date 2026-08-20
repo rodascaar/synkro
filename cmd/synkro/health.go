@@ -113,6 +113,9 @@ var healthCmd = &cobra.Command{
 			} else {
 				fmt.Println("  ✅ Embedding manager available")
 				repo.SetEmbeddingGenerator(embedMgr)
+				if cfg.ModelType != "onnx" {
+					fmt.Println("  ⚠️  TF-IDF mode: embeddings are stateful and similarity scores may drift between sessions; use SYNKRO_MODEL_TYPE=onnx for stable thresholds")
+				}
 			}
 
 			graphRepo := graph.NewRepository(d.DB())

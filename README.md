@@ -98,6 +98,13 @@ apt install libonnxruntime-dev  # Linux
 
 Set `SYNKRO_MODEL_TYPE=onnx` in environment variables to use ONNX embeddings. Without it, Synkro defaults to TF-IDF.
 
+> **Note on TF-IDF mode**: TF-IDF embeddings are stateful — `idf` weights are
+> computed incrementally as memories are added, so embedding values (and with
+> them, similarity/conflict scores) can shift between sessions as the corpus
+> grows. Conflict detection uses token overlap (Jaccard) and is unaffected.
+> For stable, deterministic similarity thresholds across restarts, use
+> `SYNKRO_MODEL_TYPE=onnx`.
+
 ## TUI
 
 ```bash

@@ -30,6 +30,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `GetMany` batch lookup on memory repository (fixes TUI N+1)
 - Consolidated CI workflow (`.github/workflows/ci.yml`)
 
+## [2.4.0] - 2026-08-20
+
+### Added
+
+- FTS5 prefilter for conflict/similarity scans (`DetectConflicts`, `SimilarMemories`), avoiding full-table scans; falls back to a full scan when FTS5 is unavailable
+- Wider vector-scoring window (`vectorFetchMultiplier`) so older but relevant memories are considered in hybrid search reranking
+- `Refresh` on graph and session tracker, plus a periodic (5s) in-memory state refresh in the MCP server to pick up writes from other processes
+- SQLite `embedding_cache` pruned to `maxSize` on startup (bounded on disk, not just in the in-memory LRU)
+- Functional options for the MCP server constructor (`WithVersion`, `WithEmbeddingType`, `WithConflictThreshold`) replacing post-construction setters
+
+### Changed
+
+- SQLite connection pool limited to a single connection (`SetMaxOpenConns(1)`/`SetMaxIdleConns(1)`) to eliminate `database is locked` errors on concurrent calls
+- TF-IDF `GenerateBatch` parallelized across CPUs; document-frequency reads are lock-protected, making batch embeddings deterministic
+- `SessionTracker.GetOrCreate`/`MarkAsDelivered` respect the caller context instead of `context.Background()`
+- `loadFromDB` errors are now logged instead of silently swallowed (graph, session, embedding cache)
+
+### Fixed
+
+- Deadlock when loading sessions from the DB under a single-connection pool (nested queries while rows were still open)
+
+### Notes
+
+- TF-IDF mode: embeddings are stateful; similarity/conflict scores can shift between sessions as the corpus grows. Conflict detection uses token overlap (Jaccard) and is unaffected. Use `SYNKRO_MODEL_TYPE=onnx` for stable, deterministic thresholds.
+
 ## [2.2.0] - 2026-08-19
 
 ### Added
