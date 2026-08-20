@@ -34,6 +34,12 @@ func New(path string) (*Database, error) {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
+	// SQLite allows a single writer. Limiting the pool to one connection
+	// serializes operations and avoids "database is locked" errors between
+	// concurrent calls (e.g. concurrent MCP tool invocations).
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+
 	database := &Database{db: db}
 
 	if err := database.initSchema(); err != nil {
