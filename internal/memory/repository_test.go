@@ -495,3 +495,81 @@ func TestRepository_Create_AssignsID(t *testing.T) {
 	require.NoError(t, repo.Create(context.Background(), mem2))
 	assert.NotEqual(t, mem.ID, mem2.ID)
 }
+
+func TestRepository_DetectConflicts(t *testing.T) {
+	d, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := memory.NewRepository(d.DB())
+	repo.SetEmbeddingGenerator(embeddings.NewTFIDFEmbeddingGenerator(nil))
+	ctx := context.Background()
+
+	require.NoError(t, repo.Create(ctx, &memory.Memory{
+		Type: "decision", Title: "Use SQLite", Content: "We decided to use SQLite as the database for the project", Status: "active",
+	}))
+	require.NoError(t, repo.Create(ctx, &memory.Memory{
+		Type: "note", Title: "Coffee", Content: "Espresso in the morning", Status: "active",
+	}))
+
+	candidates, err := repo.DetectConflicts(ctx, "Use SQLite We decided to use SQLite as the database for the project", "", 0.7)
+	require.NoError(t, err)
+	assert.Len(t, candidates, 1)
+	assert.Equal(t, "Use SQLite", candidates[0].Memory.Title)
+	assert.Greater(t, candidates[0].Score, 0.6)
+}
+
+func TestRepository_DetectConflicts_ExcludesSelf(t *testing.T) {
+	d, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := memory.NewRepository(d.DB())
+	repo.SetEmbeddingGenerator(embeddings.NewTFIDFEmbeddingGenerator(nil))
+	ctx := context.Background()
+
+	mem := &memory.Memory{Type: "note", Title: "Postgres", Content: "Use PostgreSQL for the primary database", Status: "active"}
+	require.NoError(t, repo.Create(ctx, mem))
+
+	candidates, err := repo.DetectConflicts(ctx, "Postgres Use PostgreSQL for the primary database", mem.ID, 0.7)
+	require.NoError(t, err)
+	assert.Empty(t, candidates)
+}
+
+func TestRepository_DetectConflicts_NoGenerator(t *testing.T) {
+	d, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := memory.NewRepository(d.DB())
+	ctx := context.Background()
+
+	require.NoError(t, repo.Create(ctx, &memory.Memory{
+		Type: "decision", Title: "Use SQLite", Content: "We decided to use SQLite as the database for the project", Status: "active",
+	}))
+
+	// La detección por solapamiento de tokens no requiere generador de embeddings.
+	candidates, err := repo.DetectConflicts(ctx, "Use SQLite We decided to use SQLite as the database for the project", "", 0.7)
+	require.NoError(t, err)
+	assert.Len(t, candidates, 1)
+	assert.Equal(t, "Use SQLite", candidates[0].Memory.Title)
+}
+
+func TestRepository_Upsert_ByTopicKey(t *testing.T) {
+	d, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := memory.NewRepository(d.DB())
+	repo.SetEmbeddingGenerator(embeddings.NewTFIDFEmbeddingGenerator(nil))
+	ctx := context.Background()
+
+	mem1 := &memory.Memory{Type: "note", Title: "V1", Content: "First version", Status: "active", TopicKey: "topic-x"}
+	require.NoError(t, repo.Upsert(ctx, mem1))
+
+	mem2 := &memory.Memory{Type: "note", Title: "V2", Content: "Second version", Status: "active", TopicKey: "topic-x"}
+	require.NoError(t, repo.Upsert(ctx, mem2))
+
+	assert.Equal(t, mem1.ID, mem2.ID)
+
+	fetched, err := repo.Get(ctx, mem1.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "V2", fetched.Title)
+	assert.Equal(t, "Second version", fetched.Content)
+}

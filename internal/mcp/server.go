@@ -14,22 +14,26 @@ import (
 )
 
 type Server struct {
-	repo           *memory.Repository
-	graph          *graph.Graph
-	sessionTracker *session.SessionTracker
-	contextPruner  *pruner.ContextPruner
-	server         *mcp.Server
-	serverVersion  string
-	embeddingType  string
+	repo              *memory.Repository
+	graph             *graph.Graph
+	sessionTracker    *session.SessionTracker
+	contextPruner     *pruner.ContextPruner
+	server            *mcp.Server
+	serverVersion     string
+	embeddingType     string
+	conflictThreshold float64
 }
+
+const defaultConflictThreshold = 0.7
 
 func NewServer(repo *memory.Repository, g *graph.Graph, st *session.SessionTracker, cp *pruner.ContextPruner) *Server {
 	return &Server{
-		repo:           repo,
-		graph:          g,
-		sessionTracker: st,
-		contextPruner:  cp,
-		serverVersion:  "1.0",
+		repo:              repo,
+		graph:             g,
+		sessionTracker:    st,
+		contextPruner:     cp,
+		serverVersion:     "1.0",
+		conflictThreshold: defaultConflictThreshold,
 	}
 }
 
@@ -39,6 +43,14 @@ func (s *Server) SetVersion(v string) {
 
 func (s *Server) SetEmbeddingType(t string) {
 	s.embeddingType = t
+}
+
+// SetConflictThreshold sets the similarity threshold for detecting potential
+// conflicts between memories (0.0 to 1.0).
+func (s *Server) SetConflictThreshold(t float64) {
+	if t > 0 && t <= 1 {
+		s.conflictThreshold = t
+	}
 }
 
 func (s *Server) Run(ctx context.Context) error {
@@ -359,6 +371,56 @@ func (s *Server) Run(ctx context.Context) error {
 		},
 	}, s.handleSavePrompt)
 
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "detect_conflicts",
+		Description: "Pre-check text against existing memories for potential semantic conflicts",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"text": map[string]interface{}{
+					"type":        "string",
+					"description": "Text to check for conflicts (required)",
+				},
+				"threshold": map[string]interface{}{
+					"type":        "number",
+					"description": "Similarity threshold (default: 0.7)",
+				},
+			},
+			"required": []string{"text"},
+		},
+	}, s.handleDetectConflicts)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "judge_conflict",
+		Description: "Resolve a potential conflict between two memories by creating the relation (conflicts_with, supersedes, related_to, part_of, not_conflict)",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"memory_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Memory ID (required)",
+				},
+				"candidate_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Candidate memory ID (required)",
+				},
+				"verdict": map[string]interface{}{
+					"type":        "string",
+					"description": "Verdict: conflicts_with, supersedes, related_to, part_of, not_conflict (required)",
+				},
+				"confidence": map[string]interface{}{
+					"type":        "number",
+					"description": "Confidence 0.0-1.0",
+				},
+				"reasoning": map[string]interface{}{
+					"type":        "string",
+					"description": "Reasoning for the verdict",
+				},
+			},
+			"required": []string{"memory_id", "candidate_id", "verdict"},
+		},
+	}, s.handleJudgeConflict)
+
 	log.SetOutput(os.Stderr)
 	log.Printf("Synkro MCP Server v%s starting...\n", s.serverVersion)
 
@@ -553,6 +615,36 @@ func (s *Server) handleSavePrompt(ctx context.Context, req *mcp.CallToolRequest,
 	}, nil, nil
 }
 
+func (s *Server) handleDetectConflicts(ctx context.Context, req *mcp.CallToolRequest, args DetectConflictsArgs) (*mcp.CallToolResult, any, error) {
+	if args.Text == "" {
+		return errorResult(fmt.Errorf("text is required")), nil, nil
+	}
+	buf := &BufferWriter{}
+	if err := s.DetectConflicts(ctx, args, buf); err != nil {
+		return errorResult(err), nil, nil
+	}
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: buf.String()},
+		},
+	}, nil, nil
+}
+
+func (s *Server) handleJudgeConflict(ctx context.Context, req *mcp.CallToolRequest, args JudgeConflictArgs) (*mcp.CallToolResult, any, error) {
+	if args.MemoryID == "" || args.CandidateID == "" || args.Verdict == "" {
+		return errorResult(fmt.Errorf("memory_id, candidate_id and verdict are required")), nil, nil
+	}
+	buf := &BufferWriter{}
+	if err := s.JudgeConflict(ctx, args, buf); err != nil {
+		return errorResult(err), nil, nil
+	}
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: buf.String()},
+		},
+	}, nil, nil
+}
+
 func errorResult(err error) *mcp.CallToolResult {
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
@@ -635,6 +727,19 @@ type PinMemoryArgs struct {
 type SavePromptArgs struct {
 	Prompt    string `json:"prompt" jsonschema:"The prompt or query text (required)"`
 	SessionID string `json:"session_id" jsonschema:"Session ID for tracking"`
+}
+
+type DetectConflictsArgs struct {
+	Text      string  `json:"text" jsonschema:"Text to check for conflicts (required)"`
+	Threshold float64 `json:"threshold" jsonschema:"Similarity threshold (default: 0.7)"`
+}
+
+type JudgeConflictArgs struct {
+	MemoryID    string  `json:"memory_id" jsonschema:"Memory ID (required)"`
+	CandidateID string  `json:"candidate_id" jsonschema:"Candidate memory ID (required)"`
+	Verdict     string  `json:"verdict" jsonschema:"Verdict: conflicts_with, supersedes, related_to, part_of, not_conflict (required)"`
+	Confidence  float64 `json:"confidence" jsonschema:"Confidence 0.0-1.0"`
+	Reasoning   string  `json:"reasoning" jsonschema:"Reasoning for the verdict"`
 }
 
 type BufferWriter struct {

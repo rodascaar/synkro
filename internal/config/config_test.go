@@ -42,6 +42,7 @@ func TestLoad_EnvOverrides(t *testing.T) {
 	t.Setenv("SYNKRO_MODEL_TYPE", "onnx")
 	t.Setenv("SYNKRO_MODEL_DIR", "/tmp/models")
 	t.Setenv("SYNKRO_PREFERRED_MODEL", "stsb-roberta-base-v2")
+	t.Setenv("SYNKRO_CONFLICT_THRESHOLD", "0.75")
 
 	cfg, err := Load()
 	require.NoError(t, err)
@@ -49,6 +50,7 @@ func TestLoad_EnvOverrides(t *testing.T) {
 	assert.Equal(t, "onnx", cfg.ModelType)
 	assert.Equal(t, "/tmp/models", cfg.ModelDir)
 	assert.Equal(t, "stsb-roberta-base-v2", cfg.PreferredModel)
+	assert.Equal(t, 0.75, cfg.ConflictThreshold)
 }
 
 func TestLoad_FromJSONFile(t *testing.T) {
@@ -111,9 +113,9 @@ func TestLoad_FromKeyValueFile_MigratesToJSON(t *testing.T) {
 func TestSave_WritesJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := &Config{
-		DatabasePath:   "custom.db",
-		ModelType:      "onnx",
-		configPath:     filepath.Join(tmpDir, "config.json"),
+		DatabasePath: "custom.db",
+		ModelType:    "onnx",
+		configPath:   filepath.Join(tmpDir, "config.json"),
 	}
 
 	err := Save(cfg)

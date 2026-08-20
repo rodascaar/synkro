@@ -75,6 +75,6 @@ var (
 	ErrInvalidRelationType = &SynkroError{
 		Code:    "INVALID_RELATION",
 		Message: "Invalid relation type",
-		Help:    "Valid types: extends, depends_on, conflicts_with, example_of, part_of, related_to",
+		Help:    "Valid types: extends, depends_on, conflicts_with, example_of, part_of, related_to, supersedes",
 	}
 )

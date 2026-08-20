@@ -51,7 +51,15 @@ const (
 	RelationExampleOf     RelationType = "example_of"
 	RelationPartOf        RelationType = "part_of"
 	RelationRelatedTo     RelationType = "related_to"
+	RelationSupersedes    RelationType = "supersedes"
 )
+
+// ConflictCandidate representa una memoria existente que podría entrar en
+// conflicto semántico con un texto nuevo.
+type ConflictCandidate struct {
+	Memory *Memory
+	Score  float64
+}
 
 type HybridSearchResult struct {
 	Memory        *Memory `json:"memory"`

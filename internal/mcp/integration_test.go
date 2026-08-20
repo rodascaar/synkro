@@ -489,3 +489,139 @@ func TestHandlers_ActivateContext_CountsTokens(t *testing.T) {
 	require.True(t, ok)
 	assert.Greater(t, totalTokens, float64(0))
 }
+
+func TestHandlers_DetectConflicts(t *testing.T) {
+	server, memRepo := setupTestServer(t)
+	memRepo.SetEmbeddingGenerator(embeddings.NewTFIDFEmbeddingGenerator(nil))
+	ctx := context.Background()
+
+	require.NoError(t, memRepo.Create(ctx, &memory.Memory{
+		Type: "decision", Title: "Use SQLite", Content: "We decided to use SQLite as the database for the project", Status: "active",
+	}))
+
+	var buf mcp.BufferWriter
+	err := server.DetectConflicts(ctx, mcp.DetectConflictsInput{Text: "Use SQLite We decided to use SQLite as the database for the project"}, &buf)
+	require.NoError(t, err)
+
+	var response map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(buf.String()), &response))
+	assert.Equal(t, true, response["conflict_detected"])
+	conflicts := response["potential_conflicts"].([]interface{})
+	assert.NotEmpty(t, conflicts)
+	assert.Equal(t, "Use SQLite", conflicts[0].(map[string]interface{})["title"])
+}
+
+func TestHandlers_DetectConflicts_NoMatch(t *testing.T) {
+	server, memRepo := setupTestServer(t)
+	memRepo.SetEmbeddingGenerator(embeddings.NewTFIDFEmbeddingGenerator(nil))
+	ctx := context.Background()
+
+	require.NoError(t, memRepo.Create(ctx, &memory.Memory{
+		Type: "note", Title: "Coffee", Content: "I prefer espresso in the morning", Status: "active",
+	}))
+
+	var buf mcp.BufferWriter
+	err := server.DetectConflicts(ctx, mcp.DetectConflictsInput{Text: "The cat sat on the mat under a tree"}, &buf)
+	require.NoError(t, err)
+
+	var response map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(buf.String()), &response))
+	assert.Equal(t, false, response["conflict_detected"])
+	assert.Equal(t, float64(0), response["count"])
+}
+
+func TestHandlers_AddMemory_AttachesConflicts(t *testing.T) {
+	server, memRepo := setupTestServer(t)
+	memRepo.SetEmbeddingGenerator(embeddings.NewTFIDFEmbeddingGenerator(nil))
+	ctx := context.Background()
+
+	require.NoError(t, memRepo.Create(ctx, &memory.Memory{
+		Type: "decision", Title: "DB Choice", Content: "We chose PostgreSQL for the primary storage", Status: "active",
+	}))
+
+	var buf mcp.BufferWriter
+	err := server.AddMemoryWithWriter(ctx, mcp.AddMemoryInput{
+		Type:    "decision",
+		Title:   "DB Choice Revisited",
+		Content: "We chose PostgreSQL for the primary storage solution",
+	}, &buf)
+	require.NoError(t, err)
+
+	var response map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(buf.String()), &response))
+	require.Equal(t, true, response["success"])
+
+	conflictDetected, ok := response["conflict_detected"].(bool)
+	require.True(t, ok)
+	// El umbral por defecto 0.8 debería detectar el casi-duplicado.
+	assert.True(t, conflictDetected)
+}
+
+func TestHandlers_JudgeConflict_NotConflict(t *testing.T) {
+	server, memRepo := setupTestServerWithGraph(t)
+	ctx := context.Background()
+
+	mem1 := &memory.Memory{Type: "decision", Title: "SQLite DB", Content: "Use SQLite for local storage", Status: "active"}
+	mem2 := &memory.Memory{Type: "decision", Title: "Postgres DB", Content: "Use PostgreSQL for remote storage", Status: "active"}
+	require.NoError(t, memRepo.Create(ctx, mem1))
+	require.NoError(t, memRepo.Create(ctx, mem2))
+
+	var buf mcp.BufferWriter
+	err := server.JudgeConflict(ctx, mcp.JudgeConflictInput{
+		MemoryID:    mem1.ID,
+		CandidateID: mem2.ID,
+		Verdict:     "not_conflict",
+		Reasoning:   "Different scopes",
+	}, &buf)
+	require.NoError(t, err)
+
+	var response map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(buf.String()), &response))
+	assert.Equal(t, false, response["relation_created"])
+}
+
+func TestHandlers_JudgeConflict_Supersedes(t *testing.T) {
+	server, memRepo := setupTestServerWithGraph(t)
+	ctx := context.Background()
+
+	mem1 := &memory.Memory{Type: "decision", Title: "Old Approach", Content: "Use v1 architecture", Status: "active"}
+	mem2 := &memory.Memory{Type: "decision", Title: "New Approach", Content: "Use v2 architecture", Status: "active"}
+	require.NoError(t, memRepo.Create(ctx, mem1))
+	require.NoError(t, memRepo.Create(ctx, mem2))
+
+	var buf mcp.BufferWriter
+	err := server.JudgeConflict(ctx, mcp.JudgeConflictInput{
+		MemoryID:    mem2.ID,
+		CandidateID: mem1.ID,
+		Verdict:     "supersedes",
+		Reasoning:   "v2 replaces v1",
+	}, &buf)
+	require.NoError(t, err)
+
+	var response map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(buf.String()), &response))
+	assert.Equal(t, true, response["relation_created"])
+	assert.Equal(t, "supersedes", response["relation_type"])
+
+	buf.Reset()
+	err = server.GetRelations(ctx, mcp.GetRelationsInput{MemoryID: mem2.ID}, &buf)
+	require.NoError(t, err)
+	var relations map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(buf.String()), &relations))
+	rels := relations["relations"].([]interface{})
+	assert.Len(t, rels, 1)
+	assert.Equal(t, "supersedes", rels[0].(map[string]interface{})["type"])
+}
+
+func TestHandlers_JudgeConflict_InvalidVerdict(t *testing.T) {
+	server, _ := setupTestServerWithGraph(t)
+	ctx := context.Background()
+
+	var buf mcp.BufferWriter
+	err := server.JudgeConflict(ctx, mcp.JudgeConflictInput{
+		MemoryID:    "mem-1",
+		CandidateID: "mem-2",
+		Verdict:     "invalid_verdict",
+	}, &buf)
+	require.Error(t, err)
+}

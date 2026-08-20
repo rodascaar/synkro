@@ -36,6 +36,36 @@ const (
 	EmbeddingDimension = 384
 )
 
+// defaultStopwords es la lista de stopwords compartida usada por el
+// tokenizador exportado TokenizeText.
+var defaultStopwords = stopwords.NewSet()
+
+// TokenizeText devuelve los tokens base de un texto: minúsculas, sin
+// stopwords y sin duplicados. No incluye n-gramas. Se usa para comparaciones
+// por solapamiento (e.g. conflict detection), independientes del estado
+// del generador de embeddings.
+func TokenizeText(text string) []string {
+	text = normalizeText(text)
+	text = strings.ToLower(text)
+	re := regexp.MustCompile(`[^\w\s]`)
+	text = re.ReplaceAllString(text, " ")
+	words := strings.Fields(text)
+
+	seen := make(map[string]bool, len(words))
+	tokens := make([]string, 0, len(words))
+	for _, word := range words {
+		if len(word) < 2 || defaultStopwords[word] {
+			continue
+		}
+		if seen[word] {
+			continue
+		}
+		seen[word] = true
+		tokens = append(tokens, word)
+	}
+	return tokens
+}
+
 func NewTFIDFEmbeddingGenerator(cache *Cache) *TFIDFEmbeddingGenerator {
 	return &TFIDFEmbeddingGenerator{
 		dimension:         EmbeddingDimension,

@@ -30,6 +30,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `GetMany` batch lookup on memory repository (fixes TUI N+1)
 - Consolidated CI workflow (`.github/workflows/ci.yml`)
 
+## [2.2.0] - 2026-08-19
+
+### Added
+
+- `topic_key` upsert: `add_memory` (and CLI `--topic-key`) updates an existing memory with the same key instead of creating a duplicate
+- Duplicate detection: `similarity_score` returned on `add_memory`/`save_prompt`
+- Pinning: `pin_memory`/`unpin_memory` MCP tools + pinned-first ordering in listings
+- `save_prompt` MCP tool: light auto-capture of prompts as context memories (per-session upsert)
+- `detect_conflicts` MCP tool: pre-check text against existing memories for potential conflicts
+- `judge_conflict` MCP tool: resolve a conflict by creating a relation (`conflicts_with`, `supersedes`, `related_to`, `part_of`, `not_conflict`)
+- New `supersedes` relation type (7th relation type)
+- `SYNKRO_CONFLICT_THRESHOLD` env var (default 0.7) for conflict detection
+
 ## [2.1.0] - 2026-04-15
 
 ### Security

@@ -110,6 +110,7 @@ SYNKRO_DB_PATH=memory.db                 # Database location (default: memory.db
 SYNKRO_MODEL_TYPE=tfidf                  # Model type (default: tfidf) or onnx
 SYNKRO_MODEL_DIR=models                  # Model download directory (default: models)
 SYNKRO_PREFERRED_MODEL=all-MiniLM-L6-v2  # Default ONNX model to use
+SYNKRO_CONFLICT_THRESHOLD=0.7            # Similarity threshold for conflict detection
 ```
 
 ## Verification & Testing
@@ -153,17 +154,23 @@ go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 **FULLY IMPLEMENTED** using `github.com/modelcontextprotocol/go-sdk` v1.4.1
 
 Available tools:
-- `add_memory` - Add new memory
+- `add_memory` - Add new memory (topic_key upsert, conflict detection in response)
 - `get_memory` - Get memory by ID (includes relations)
-- `list_memories` - List memories with filters
+- `list_memories` - List memories with filters (pinned first)
 - `search_memories` - FTS5 full-text search
 - `update_memory` - Update existing memory
 - `archive_memory` - Archive memory (mark as archived)
 - `activate_context` - Activate context with pruning and deduplication
-- `add_relation` - Add relation between two memories (6 types)
+- `add_relation` - Add relation between two memories (7 types incl. supersedes)
 - `get_relations` - Get all relations for a memory
 - `delete_relation` - Delete a relation between two memories
 - `find_path` - Find path between two memories using BFS
+- `pin_memory` / `unpin_memory` - Pin/unpin a memory (appears first in listings)
+- `save_prompt` - Save a prompt as a context memory (light auto-capture)
+- `detect_conflicts` - Pre-check text against existing memories for potential conflicts
+- `judge_conflict` - Resolve a conflict by creating the relation (conflicts_with, supersedes, related_to, part_of, not_conflict)
+
+Conflict detection threshold is configurable via `SYNKRO_CONFLICT_THRESHOLD` (default 0.7).
 
 Configuration for clients:
 ```json

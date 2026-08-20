@@ -493,9 +493,9 @@ func init() {
 	addCmd.Flags().String("type", "note", "Memory type (note, decision, task, context)")
 	addCmd.Flags().String("title", "", "Memory title (required)")
 	addCmd.Flags().String("content", "", "Memory content")
-		addCmd.Flags().String("source", "", "Memory source")
-		addCmd.Flags().StringSlice("tags", nil, "Comma-separated tags")
-		addCmd.Flags().String("topic-key", "", "Topic key for upsert (updates existing memory with same key)")
+	addCmd.Flags().String("source", "", "Memory source")
+	addCmd.Flags().StringSlice("tags", nil, "Comma-separated tags")
+	addCmd.Flags().String("topic-key", "", "Topic key for upsert (updates existing memory with same key)")
 
 	rootCmd.AddCommand(listCmd)
 	listCmd.Flags().String("type", "", "Filter by type")
@@ -602,6 +602,9 @@ var mcpCmd = &cobra.Command{
 		mcpServer := mcpserver.NewServer(repo, g, st, cp)
 		mcpServer.SetVersion(Version)
 		mcpServer.SetEmbeddingType(cfg.ModelType)
+		if cfg.ConflictThreshold > 0 {
+			mcpServer.SetConflictThreshold(cfg.ConflictThreshold)
+		}
 		log.Printf("[startup] ready to serve (total: %v)", time.Since(start))
 
 		if err := mcpServer.Run(context.Background()); err != nil {

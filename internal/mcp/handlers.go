@@ -96,7 +96,33 @@ func (s *Server) AddMemoryWithWriter(ctx context.Context, input AddMemoryInput, 
 		"embedding_used":   s.embeddingType,
 	}
 
+	s.attachConflictInfo(ctx, response, mem.Title+" "+mem.Content, mem.ID)
+
 	return writeJSON(w, response)
+}
+
+// attachConflictInfo adds potential conflict detection to the response for a
+// newly created memory against existing ones. It does not block creation.
+func (s *Server) attachConflictInfo(ctx context.Context, response map[string]interface{}, text, excludeID string) {
+	candidates, err := s.repo.DetectConflicts(ctx, text, excludeID, s.conflictThreshold)
+	if err != nil {
+		return
+	}
+	if len(candidates) == 0 {
+		response["conflict_detected"] = false
+		return
+	}
+
+	conflicts := make([]map[string]interface{}, 0, len(candidates))
+	for _, c := range candidates {
+		conflicts = append(conflicts, map[string]interface{}{
+			"memory_id":  c.Memory.ID,
+			"title":      c.Memory.Title,
+			"similarity": c.Score,
+		})
+	}
+	response["conflict_detected"] = true
+	response["potential_conflicts"] = conflicts
 }
 
 func (s *Server) GetMemory(ctx context.Context, input GetMemoryInput, w io.Writer) error {
@@ -429,7 +455,7 @@ func (s *Server) AddRelation(ctx context.Context, input AddRelationInput, w io.W
 
 	validTypes := map[string]bool{
 		"extends": true, "depends_on": true, "conflicts_with": true,
-		"example_of": true, "part_of": true, "related_to": true,
+		"example_of": true, "part_of": true, "related_to": true, "supersedes": true,
 	}
 	if !validTypes[input.Type] {
 		return synkroerrors.ErrInvalidRelationType
@@ -617,30 +643,148 @@ func (s *Server) SavePrompt(ctx context.Context, input SavePromptInput, w io.Wri
 		if err := s.repo.UpdateMemory(ctx, mem); err != nil {
 			return synkroerrors.Wrap(err, synkroerrors.CodeDBError, "Error updating prompt memory", "Try again")
 		}
-		return writeJSON(w, map[string]interface{}{
+		response := map[string]interface{}{
 			"success":          true,
 			"memory_id":        mem.ID,
 			"updated":          true,
 			"similarity_score": similarity,
 			"embedding_used":   s.embeddingType,
-		})
+		}
+		s.attachConflictInfo(ctx, response, mem.Title+" "+mem.Content, mem.ID)
+		return writeJSON(w, response)
 	}
 
 	if err := s.repo.Create(ctx, mem); err != nil {
 		return synkroerrors.Wrap(err, synkroerrors.ErrEmbeddingFailed.Code, "Error creating prompt memory", synkroerrors.ErrEmbeddingFailed.Help)
 	}
 
-	return writeJSON(w, map[string]interface{}{
+	response := map[string]interface{}{
 		"success":          true,
 		"memory_id":        mem.ID,
 		"similarity_score": similarity,
 		"embedding_used":   s.embeddingType,
-	})
+	}
+	s.attachConflictInfo(ctx, response, mem.Title+" "+mem.Content, mem.ID)
+	return writeJSON(w, response)
 }
 
 type PinMemoryInput = PinMemoryArgs
 
 type SavePromptInput = SavePromptArgs
+
+type DetectConflictsInput = DetectConflictsArgs
+
+type JudgeConflictInput = JudgeConflictArgs
+
+// DetectConflicts pre-checks a text against existing memories and reports
+// potential conflicts without creating any memory.
+func (s *Server) DetectConflicts(ctx context.Context, input DetectConflictsInput, w io.Writer) error {
+	if input.Text == "" {
+		return synkroerrors.Wrap(
+			fmt.Errorf("text is required"),
+			synkroerrors.ErrInvalidInput.Code,
+			synkroerrors.ErrInvalidInput.Message,
+			synkroerrors.ErrInvalidInput.Help,
+		)
+	}
+
+	threshold := input.Threshold
+	if threshold <= 0 {
+		threshold = s.conflictThreshold
+	}
+
+	candidates, err := s.repo.DetectConflicts(ctx, input.Text, "", threshold)
+	if err != nil {
+		return synkroerrors.Wrap(err, synkroerrors.CodeDBError, "Error detecting conflicts", "Try again")
+	}
+
+	conflicts := make([]map[string]interface{}, 0, len(candidates))
+	for _, c := range candidates {
+		conflicts = append(conflicts, map[string]interface{}{
+			"memory_id":  c.Memory.ID,
+			"title":      c.Memory.Title,
+			"content":    c.Memory.Content,
+			"similarity": c.Score,
+		})
+	}
+
+	return writeJSON(w, map[string]interface{}{
+		"text":                input.Text,
+		"threshold":           threshold,
+		"conflict_detected":   len(conflicts) > 0,
+		"potential_conflicts": conflicts,
+		"count":               len(conflicts),
+	})
+}
+
+// JudgeConflict resuelve un posible conflicto entre dos memorias creando la
+// relación correspondiente. `verdict` es uno de: conflicts_with, supersedes,
+// related_to, part_of o not_conflict. not_conflict no crea relación.
+func (s *Server) JudgeConflict(ctx context.Context, input JudgeConflictInput, w io.Writer) error {
+	if input.MemoryID == "" || input.CandidateID == "" {
+		return synkroerrors.Wrap(
+			fmt.Errorf("memory_id and candidate_id are required"),
+			synkroerrors.ErrInvalidInput.Code,
+			synkroerrors.ErrInvalidInput.Message,
+			synkroerrors.ErrInvalidInput.Help,
+		)
+	}
+	if s.graph == nil {
+		return synkroerrors.Wrap(
+			fmt.Errorf("graph not available"),
+			synkroerrors.CodeGraphNotAvailable,
+			"Graph not available",
+			"Ensure the graph module is initialized",
+		)
+	}
+
+	validVerdicts := map[string]string{
+		"conflicts_with": string(memory.RelationConflictsWith),
+		"supersedes":     string(memory.RelationSupersedes),
+		"related_to":     string(memory.RelationRelatedTo),
+		"part_of":        string(memory.RelationPartOf),
+		"not_conflict":   "",
+	}
+	relationType, ok := validVerdicts[input.Verdict]
+	if !ok {
+		return synkroerrors.Wrap(
+			fmt.Errorf("invalid verdict %q, must be one of: conflicts_with, supersedes, related_to, part_of, not_conflict", input.Verdict),
+			synkroerrors.ErrInvalidInput.Code,
+			synkroerrors.ErrInvalidInput.Message,
+			synkroerrors.ErrInvalidInput.Help,
+		)
+	}
+
+	response := map[string]interface{}{
+		"memory_id":    input.MemoryID,
+		"candidate_id": input.CandidateID,
+		"verdict":      input.Verdict,
+		"confidence":   input.Confidence,
+		"reasoning":    input.Reasoning,
+	}
+
+	// not_conflict no persiste relación: se registra el juicio como no conflicto.
+	if relationType == "" {
+		response["relation_created"] = false
+		return writeJSON(w, response)
+	}
+
+	relation := &memory.MemoryRelation{
+		SourceID:  input.MemoryID,
+		TargetID:  input.CandidateID,
+		Type:      relationType,
+		Strength:  1.0,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	if err := s.graph.AddRelation(ctx, relation); err != nil {
+		return synkroerrors.Wrap(err, synkroerrors.CodeGraphError, "Error adding relation", "Check both memory IDs exist")
+	}
+
+	response["relation_created"] = true
+	response["relation_type"] = relationType
+	return writeJSON(w, response)
+}
 
 type ActivateContextResponse struct {
 	PrimaryResults     []*ContextResultItem `json:"primary_results"`

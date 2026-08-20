@@ -633,6 +633,79 @@ func (r *Repository) SimilarMemories(ctx context.Context, text string, threshold
 	return similar, nil
 }
 
+// DetectConflicts devuelve las memorias activas cuyo solapamiento de tokens con
+// el texto supera el umbral, excluyendo la memoria dada por excludeID (para
+// evitar que una memoria recién creada se detecte a sí misma). Usa similitud
+// de Jaccard sobre los tokens (título + contenido) en lugar del coseno de
+// embeddings: es determinista, independiente del modelo y estable aunque crezca
+// el corpus. Es el pre-chequeo y la detección usada al agregar memorias nuevas.
+func (r *Repository) DetectConflicts(ctx context.Context, text, excludeID string, threshold float64) ([]ConflictCandidate, error) {
+	queryTokens := embeddings.TokenizeText(text)
+	if len(queryTokens) == 0 {
+		return nil, nil
+	}
+	querySet := make(map[string]bool, len(queryTokens))
+	for _, t := range queryTokens {
+		querySet[t] = true
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, created_at, updated_at, type, title, content, COALESCE(source, ''), status, COALESCE(tags, ''), COALESCE(topic_key, ''), pinned
+		FROM memories WHERE status = 'active'
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var candidates []ConflictCandidate
+	for rows.Next() {
+		mem, err := scanMemory(rows)
+		if err != nil {
+			continue
+		}
+		if excludeID != "" && mem.ID == excludeID {
+			continue
+		}
+		score := jaccardTokens(querySet, mem.Title+" "+mem.Content)
+		if score >= threshold {
+			candidates = append(candidates, ConflictCandidate{Memory: mem, Score: score})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].Score > candidates[j].Score
+	})
+	return candidates, nil
+}
+
+// jaccardTokens calcula la similitud de Jaccard entre un conjunto de tokens de
+// consulta y el conjunto de tokens de un texto (0.0 a 1.0).
+func jaccardTokens(query map[string]bool, text string) float64 {
+	memTokens := embeddings.TokenizeText(text)
+	if len(memTokens) == 0 {
+		return 0
+	}
+	union := make(map[string]bool, len(query)+len(memTokens))
+	intersection := 0
+	for t := range query {
+		union[t] = true
+	}
+	for _, t := range memTokens {
+		if query[t] {
+			intersection++
+		}
+		union[t] = true
+	}
+	if len(union) == 0 {
+		return 0
+	}
+	return float64(intersection) / float64(len(union))
+}
+
 // MaxSimilarity devuelve la similitud coseno máxima entre el texto y las
 // memorias existentes. Útil para detectar duplicados al agregar una memoria.
 func (r *Repository) MaxSimilarity(ctx context.Context, text string) (float64, error) {

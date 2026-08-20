@@ -2,7 +2,7 @@
 
 > Intelligent Context Engine for LLMs
 
-![Version](https://img.shields.io/badge/version-2.1-blue)
+![Version](https://img.shields.io/badge/version-2.3-blue)
 ![Go](https://img.shields.io/badge/Go-1.26+-00ADD8E)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -62,9 +62,10 @@ make build
 - **FTS5 Full-Text Search** with BM25 scoring
 - **Semantic Embeddings** — TF-IDF + N-grams (384 dims) with persistent cache
 - **Hybrid Search** — FTS5 BM25 + in-memory cosine similarity reranking
-- **Relationship Graph** — 6 relation types with BFS pathfinding
+- **Relationship Graph** — 7 relation types (incl. `supersedes`) with BFS pathfinding
 - **Professional TUI** — 3 interactive panels + Add Memory form
 - **MCP Server** — Built with official Go SDK, compatible with all major IDEs
+- **Conflict Detection** — Pre-check + verdict resolution (`detect_conflicts`, `judge_conflict`)
 - **SQLite + WAL** — Pure-Go driver (`modernc.org/sqlite`), no CGO required
 - **Session Tracking** — Persistent deduplication across sessions
 - **Context Pruning** — Intelligent result filtering
@@ -146,6 +147,7 @@ SYNKRO_DB_PATH=memory.db                 # Database location (default: memory.db
 SYNKRO_MODEL_TYPE=tfidf                  # Model type: tfidf or onnx
 SYNKRO_MODEL_DIR=models                  # Model download directory
 SYNKRO_PREFERRED_MODEL=all-MiniLM-L6-v2  # Default ONNX model
+SYNKRO_CONFLICT_THRESHOLD=0.7            # Similarity threshold for conflict detection
 ```
 
 ## License

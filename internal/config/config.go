@@ -4,15 +4,17 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
 type Config struct {
-	DatabasePath   string `json:"database_path"`
-	ModelType      string `json:"model_type"`
-	ModelDir       string `json:"model_dir"`
-	PreferredModel string `json:"preferred_model"`
-	configPath     string `json:"-"`
+	DatabasePath      string  `json:"database_path"`
+	ModelType         string  `json:"model_type"`
+	ModelDir          string  `json:"model_dir"`
+	PreferredModel    string  `json:"preferred_model"`
+	ConflictThreshold float64 `json:"conflict_threshold,omitempty"`
+	configPath        string  `json:"-"`
 }
 
 func Load() (*Config, error) {
@@ -63,6 +65,13 @@ func (c *Config) setters() []fieldSetter {
 		{"SYNKRO_PREFERRED_MODEL", func(v string) {
 			if v != "" {
 				c.PreferredModel = v
+			}
+		}},
+		{"SYNKRO_CONFLICT_THRESHOLD", func(v string) {
+			if v != "" {
+				if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 && f <= 1 {
+					c.ConflictThreshold = f
+				}
 			}
 		}},
 	}
