@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 )
 
 type Executor interface {
@@ -35,8 +36,11 @@ func getMigrations() []Migration {
 					);
 				`)
 				if err != nil {
-					log.Printf("Warning: FTS5 not available, skipping migration: %v", err)
-					return nil
+					if isFTS5ModuleMissing(err) {
+						log.Printf("Warning: FTS5 module not available (%v); full-text search disabled, continuing without it", err)
+						return nil
+					}
+					return fmt.Errorf("failed to create FTS5 virtual table: %w", err)
 				}
 
 				_, err = db.ExecContext(ctx, `
@@ -44,7 +48,7 @@ func getMigrations() []Migration {
 					SELECT rowid, id, title, content FROM memories;
 				`)
 				if err != nil {
-					log.Printf("Warning: failed to backfill FTS5: %v", err)
+					return fmt.Errorf("failed to backfill FTS5: %w", err)
 				}
 
 				_, err = db.ExecContext(ctx, `
@@ -66,7 +70,7 @@ func getMigrations() []Migration {
 					END;
 				`)
 				if err != nil {
-					log.Printf("Warning: failed to create FTS5 triggers: %v", err)
+					return fmt.Errorf("failed to create FTS5 triggers: %w", err)
 				}
 
 				return nil
@@ -185,4 +189,12 @@ func (d *Database) runMigrations() error {
 	}
 
 	return nil
+}
+
+// isFTS5ModuleMissing reports whether err indicates that the FTS5 module
+// itself is unavailable (e.g. a build without ENABLE_FTS5). modernc reports
+// this as a generic SQLITE_ERROR with message "no such module: fts5", so the
+// match is textual. Any other error is a real failure and must not be ignored.
+func isFTS5ModuleMissing(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "no such module")
 }
